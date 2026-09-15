@@ -10,10 +10,38 @@
 
 import { revalidatePath } from "next/cache";
 import { BackendError, backendRequest } from "@/lib/backend";
+import { createAdminSession, requireAdminSession } from "./session";
 
 export type AdminReport = { status: "success" | "error"; message: string };
 
+export type JudgeApplicationView = {
+  id: string;
+  name: string;
+  email: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  submittedAt: string;
+  reviewedAt: string | null;
+};
+
+export type JudgeView = {
+  judgeId: string;
+  name: string;
+  email: string;
+  status: "ACTIVE" | "SUSPENDED";
+  approvedAt: string;
+  evaluationCount: number;
+};
+
+export type JudgingAdminContext = {
+  /** False until `npm run db:seed` has created the rubric and an invitation. */
+  seeded: boolean;
+  criteriaCount: number;
+  applications: JudgeApplicationView[];
+  judges: JudgeView[];
+};
+
 export type AdminContext = {
+  judging: JudgingAdminContext;
   teamCount: number;
   teams: Array<{ id: number; name: string; code: string; leadName: string; leadEmail: string }>;
   event: {
@@ -84,6 +112,7 @@ async function mutate(
   options: { method?: "POST" | "PATCH" | "DELETE"; body?: Record<string, unknown> } = {},
 ): Promise<AdminReport> {
   try {
+    await requireAdminSession();
     const report = await backendRequest<AdminReport>(path, {
       method: options.method ?? "POST",
       body: options.body ?? (options.method === "DELETE" ? undefined : {}),
@@ -103,7 +132,20 @@ const podPath = (capsuleKey: string, podId: string) =>
 export async function getAdminContextAction(): Promise<AdminContext> {
   // Thrown on purpose: the page turns a rejection into "Could not load
   // organiser state." and keeps polling.
-  return backendRequest<AdminContext>("/api/admin/context");
+  await requireAdminSession();
+  return backendRequest<AdminContext>("/api/admin/context", { organiser: true });
+}
+
+export async function signInAdminAction(name: string, password: string): Promise<AdminReport> {
+  try {
+    const report = await backendRequest<AdminReport & { admin?: { id: number; name: string } }>("/api/admin/login", {
+      body: { name, password },
+    });
+    if (report.status === "success" && report.admin) await createAdminSession(report.admin);
+    return report;
+  } catch (error) {
+    return failed(error);
+  }
 }
 
 export async function startEventAdminAction(): Promise<AdminReport> {
@@ -164,4 +206,19 @@ export async function setPodRemainderFlagAction(
 
 export async function resetSubCapsuleAction(capsuleKey: string, subCapsuleKey: string): Promise<AdminReport> {
   return mutate(`${capsulePath(capsuleKey)}/sub-capsules/${encodeURIComponent(subCapsuleKey)}/reset`);
+}
+
+// ------------------------------------------------------------------ judges
+
+export async function reviewJudgeApplicationAction(
+  applicationId: string,
+  decision: "APPROVED" | "REJECTED",
+): Promise<AdminReport> {
+  const verb = decision === "APPROVED" ? "approve" : "reject";
+  return mutate(`/api/admin/judges/applications/${encodeURIComponent(applicationId)}/${verb}`);
+}
+
+export async function setJudgeStatusAction(judgeId: string, status: "ACTIVE" | "SUSPENDED"): Promise<AdminReport> {
+  const verb = status === "SUSPENDED" ? "suspend" : "reinstate";
+  return mutate(`/api/admin/judges/${encodeURIComponent(judgeId)}/${verb}`);
 }

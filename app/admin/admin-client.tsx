@@ -17,6 +17,7 @@ import {
   type AdminContext,
   type AdminReport,
 } from "./actions";
+import { JudgesPanel } from "./judges-panel";
 
 function statusTone(status: string) {
   return status === "LIVE"
@@ -176,6 +177,8 @@ export function AdminClient() {
             Reset event
           </button>
         </section>
+
+        <JudgesPanel judging={context?.judging ?? null} pending={pending} run={run} />
 
         <section className="mt-8 space-y-4">
           {context?.capsules.map((capsule) => (

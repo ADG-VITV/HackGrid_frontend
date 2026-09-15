@@ -47,10 +47,16 @@ export class BackendError extends Error {
 type JsonBody = Record<string, unknown>;
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: JsonBody;
   /** Attach the organiser key. Only meaningful from the server. */
   organiser?: boolean;
+  /**
+   * Extra request headers. The judge actions use this to forward the
+   * browser's Firebase ID token (`Authorization: Bearer …`), which the
+   * backend verifies itself.
+   */
+  headers?: Record<string, string>;
 };
 
 /**
@@ -68,7 +74,7 @@ export async function backendRequest<T>(path: string, options: RequestOptions = 
     throw new BackendError("NEXT_PUBLIC_BACKEND_URL is not set.", 0, null);
   }
 
-  const headers: Record<string, string> = { accept: "application/json" };
+  const headers: Record<string, string> = { accept: "application/json", ...(options.headers ?? {}) };
   if (options.body !== undefined) headers["content-type"] = "application/json";
   if (options.organiser && process.env.ADMIN_API_KEY) {
     headers["x-admin-key"] = process.env.ADMIN_API_KEY;
