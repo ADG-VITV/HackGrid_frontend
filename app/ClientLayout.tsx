@@ -3,6 +3,7 @@
 import { Navbar } from "@/components/ui/Navbar";
 import TechCursor from "@/components/TechCursor";
 import { useViewer } from "@/lib/use-viewer";
+import { usePathname } from "next/navigation";
 
 export default function ClientLayout({
   children,
@@ -13,6 +14,9 @@ export default function ClientLayout({
   // Google session, or in development the person picked on /teams. Passing
   // it in keeps the navbar itself free of any knowledge of "acting as".
   const viewer = useViewer();
+  const pathname = usePathname();
+
+  if (pathname.startsWith("/admin")) return <>{children}</>;
 
   return (
     <>
