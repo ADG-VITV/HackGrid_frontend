@@ -41,6 +41,11 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
   // everyone in it and what they ended up with, from the same settlements.
   const pod = context.podSummary;
   const podDone = Boolean(pod?.complete);
+  // The side column tracks the pod *while it is bidding* (who is still in,
+  // how many tiers are settled). Once every tier has settled, RoundComplete
+  // lists the same teams with the same tiers and prices, so showing both is
+  // the same table twice — the results list takes the whole width instead.
+  const showPodColumn = Boolean(pod) && !podDone;
   const nextCapsule =
     context.capsules.find((capsule) => capsule.status !== "CLOSED" && capsule.key !== live?.key) ?? null;
   const secondsLeft = secondsUntil(lot?.closesAt ?? null, 0);
@@ -106,7 +111,7 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
               {/* ------------------------------------------- two columns */}
               <div className="flex min-w-0 flex-1 flex-col gap-6 pt-6 lg:flex-row lg:gap-[3%]">
                 {/* status column */}
-                <section className={`flex min-w-0 flex-col ${pod ? "lg:w-[58%]" : "flex-1"}`}>
+                <section className={`flex min-w-0 flex-col ${showPodColumn ? "lg:w-[58%]" : "flex-1"}`}>
                   {podDone && pod ? (
                     <RoundComplete
                       capsuleName={pod.capsuleName}
@@ -193,8 +198,9 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                   )}
                 </section>
 
-                {/* pod column — the same slot the lead's room uses for the pod */}
-                {pod ? <PodColumn pod={pod} youTeamId={team.id} /> : null}
+                {/* pod column — the same slot the lead's room uses for the pod,
+                    only while the pod is still bidding (see showPodColumn) */}
+                {showPodColumn && pod ? <PodColumn pod={pod} youTeamId={team.id} /> : null}
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-neon/10 pt-4">

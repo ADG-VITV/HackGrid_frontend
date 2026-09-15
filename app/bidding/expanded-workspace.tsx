@@ -307,32 +307,37 @@ export function ExpandedWorkspace({
 
         {/* ------------------------------------------------------ side column */}
         <section className="flex min-w-0 flex-col gap-4 lg:w-[39%]">
-          <div className="rounded-[20px] border border-neon/20 bg-zinc-950/60 p-4">
-            <h4 className="text-[0.65rem] font-semibold tracking-[0.16em] text-zinc-500 uppercase">
-              {room.pod.label} · {room.pod.onlineCount} of {room.pod.podSize} online
-            </h4>
-            <ul className="mt-3 space-y-1.5">
-              {room.members.map((member) => (
-                <li
-                  key={member.teamId}
-                  className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs ${
-                    member.teamId === room.you.teamId ? "bg-neon/[0.07] text-neon" : "text-zinc-300"
-                  }`}
-                >
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${
-                      member.online ? "bg-neon" : "bg-zinc-700"
+          {/* Presence only matters while the clock can still be waiting on
+              someone. Once every tier has settled the pod is just waiting on
+              the organiser, and who is online says nothing useful. */}
+          {podComplete ? null : (
+            <div className="rounded-[20px] border border-neon/20 bg-zinc-950/60 p-4">
+              <h4 className="text-[0.65rem] font-semibold tracking-[0.16em] text-zinc-500 uppercase">
+                {room.pod.label} · {room.pod.onlineCount} of {room.pod.podSize} online
+              </h4>
+              <ul className="mt-3 space-y-1.5">
+                {room.members.map((member) => (
+                  <li
+                    key={member.teamId}
+                    className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs ${
+                      member.teamId === room.you.teamId ? "bg-neon/[0.07] text-neon" : "text-zinc-300"
                     }`}
-                    aria-label={member.online ? "online" : "offline"}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{member.teamName}</span>
-                  <span className="shrink-0 truncate font-mono text-[0.6rem] text-zinc-500">
-                    {member.leadName}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+                  >
+                    <span
+                      className={`size-1.5 shrink-0 rounded-full ${
+                        member.online ? "bg-neon" : "bg-zinc-700"
+                      }`}
+                      aria-label={member.online ? "online" : "offline"}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{member.teamName}</span>
+                    <span className="shrink-0 truncate font-mono text-[0.6rem] text-zinc-500">
+                      {member.leadName}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-neon/20 bg-zinc-950/60">
             <h4 className="shrink-0 px-4 pt-4 pb-2 text-[0.65rem] font-semibold tracking-[0.16em] text-zinc-500 uppercase">
