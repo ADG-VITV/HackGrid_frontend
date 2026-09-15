@@ -99,8 +99,11 @@ export function AdminClient() {
             </p>
             <h1 className="mt-2 text-3xl font-semibold text-white">Event control</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
-              Start Event prepares every round and locks in pods for the full event. From there,
-              each round can be opened individually and reset without changing the schema.
+              Nothing happens until you act. <span className="text-zinc-200">Start event</span> draws
+              the pods for all four rounds — teams still see &ldquo;waiting for the organiser&rdquo;.{" "}
+              <span className="text-zinc-200">Start round</span> on a round is the signal: that is the
+              moment its pods open on every team&apos;s bidding page and the tier clocks can begin.
+              Rounds open strictly in order; each can be reset without touching the others.
             </p>
           </div>
           <button

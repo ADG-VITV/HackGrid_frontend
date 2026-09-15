@@ -118,11 +118,15 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                 </div>
               ) : (
                 <div className="flex flex-1 flex-col justify-center">
-                  <Eyebrow>Not started</Eyebrow>
-                  <h2 className="mt-3 text-3xl font-semibold text-white">Round one opens soon.</h2>
+                  <Eyebrow tone="amber">Standby</Eyebrow>
+                  <h2 className="mt-3 text-3xl font-semibold text-white">
+                    Waiting for the organiser to start the auction.
+                  </h2>
                   <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                    This page changes on its own the moment your lead is placed
-                    in a pod.
+                    {started
+                      ? "The next round opens on the organiser's signal."
+                      : "The first round opens on the organiser's signal."}{" "}
+                    This page changes on its own the moment it does.
                   </p>
                 </div>
               )}
