@@ -221,6 +221,7 @@ export function JudgeClient() {
             onApply={handleApply}
             onSignIn={handleSignIn}
             onSignOut={handleSignOut}
+            onRetry={() => setSessionNonce((n) => n + 1)}
           />
         )}
 

@@ -10,6 +10,7 @@
 
 import { revalidatePath } from "next/cache";
 import { BackendError, backendRequest } from "@/lib/backend";
+import { createAdminSession, requireAdminSession } from "./session";
 
 export type AdminReport = { status: "success" | "error"; message: string };
 
@@ -111,6 +112,7 @@ async function mutate(
   options: { method?: "POST" | "PATCH" | "DELETE"; body?: Record<string, unknown> } = {},
 ): Promise<AdminReport> {
   try {
+    await requireAdminSession();
     const report = await backendRequest<AdminReport>(path, {
       method: options.method ?? "POST",
       body: options.body ?? (options.method === "DELETE" ? undefined : {}),
@@ -130,7 +132,20 @@ const podPath = (capsuleKey: string, podId: string) =>
 export async function getAdminContextAction(): Promise<AdminContext> {
   // Thrown on purpose: the page turns a rejection into "Could not load
   // organiser state." and keeps polling.
-  return backendRequest<AdminContext>("/api/admin/context");
+  await requireAdminSession();
+  return backendRequest<AdminContext>("/api/admin/context", { organiser: true });
+}
+
+export async function signInAdminAction(name: string, password: string): Promise<AdminReport> {
+  try {
+    const report = await backendRequest<AdminReport & { admin?: { id: number; name: string } }>("/api/admin/login", {
+      body: { name, password },
+    });
+    if (report.status === "success" && report.admin) await createAdminSession(report.admin);
+    return report;
+  } catch (error) {
+    return failed(error);
+  }
 }
 
 export async function startEventAdminAction(): Promise<AdminReport> {
