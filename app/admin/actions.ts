@@ -13,7 +13,34 @@ import { BackendError, backendRequest } from "@/lib/backend";
 
 export type AdminReport = { status: "success" | "error"; message: string };
 
+export type JudgeApplicationView = {
+  id: string;
+  name: string;
+  email: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  submittedAt: string;
+  reviewedAt: string | null;
+};
+
+export type JudgeView = {
+  judgeId: string;
+  name: string;
+  email: string;
+  status: "ACTIVE" | "SUSPENDED";
+  approvedAt: string;
+  evaluationCount: number;
+};
+
+export type JudgingAdminContext = {
+  /** False until `npm run db:seed` has created the rubric and an invitation. */
+  seeded: boolean;
+  criteriaCount: number;
+  applications: JudgeApplicationView[];
+  judges: JudgeView[];
+};
+
 export type AdminContext = {
+  judging: JudgingAdminContext;
   teamCount: number;
   teams: Array<{ id: number; name: string; code: string; leadName: string; leadEmail: string }>;
   event: {
@@ -164,4 +191,19 @@ export async function setPodRemainderFlagAction(
 
 export async function resetSubCapsuleAction(capsuleKey: string, subCapsuleKey: string): Promise<AdminReport> {
   return mutate(`${capsulePath(capsuleKey)}/sub-capsules/${encodeURIComponent(subCapsuleKey)}/reset`);
+}
+
+// ------------------------------------------------------------------ judges
+
+export async function reviewJudgeApplicationAction(
+  applicationId: string,
+  decision: "APPROVED" | "REJECTED",
+): Promise<AdminReport> {
+  const verb = decision === "APPROVED" ? "approve" : "reject";
+  return mutate(`/api/admin/judges/applications/${encodeURIComponent(applicationId)}/${verb}`);
+}
+
+export async function setJudgeStatusAction(judgeId: string, status: "ACTIVE" | "SUSPENDED"): Promise<AdminReport> {
+  const verb = status === "SUSPENDED" ? "suspend" : "reinstate";
+  return mutate(`/api/admin/judges/${encodeURIComponent(judgeId)}/${verb}`);
 }
