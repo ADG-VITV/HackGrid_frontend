@@ -15,6 +15,8 @@ const emptyContext: BiddingContext = {
   team: null,
   viewerRole: null,
   currentLot: null,
+  currentResult: null,
+  podSummary: null,
   capsules: auctionTiles.map((tile, index) => ({
     key: tile.id,
     name: tile.label,
@@ -101,7 +103,6 @@ export function TeamDashboard({
                   ? "The ledger fills in once the auction starts."
                   : "Sign in with your roster email to see the ledger."
               }
-              revealLive={isLeader}
               showBidCap={isLeader}
             />
           </aside>

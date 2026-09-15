@@ -30,6 +30,7 @@ export type BidFeedback = {
 /** Lifecycle events the page reacts to by re-reading its context. */
 export type LifecycleEvent =
   | { type: "LOT_CLOSED" }
+  | { type: "POD_COMPLETE" }
   | { type: "CAPSULE_CLOSED" }
   | { type: "CAPSULE_OPENED" }
   | { type: "EVENT_COMPLETE" };
@@ -142,6 +143,9 @@ export function useAuctionSocket(
 
     socket.on("POD_COMPLETE", () => {
       pushEntry("success", "Every tier in this pod is settled.");
+      // The final ROOM_STATE follows this; the context (ledger, pod summary)
+      // is re-read too so both views agree on the closing picture.
+      setLastEvent({ type: "POD_COMPLETE" });
     });
 
     socket.on("CAPSULE_CLOSED", ({ nextKey }) => {
