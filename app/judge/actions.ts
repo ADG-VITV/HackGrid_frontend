@@ -33,12 +33,18 @@ export type JudgeSessionView = {
   maxTotal: number;
 };
 
-/** Where a signed-in person stands with the event. */
+/**
+ * Where a signed-in person stands with the event. `unavailable` is not a
+ * verdict about the person at all — the backend could not be reached or
+ * failed — and the UI must show it as an outage with a retry, never as a
+ * refusal.
+ */
 export type JudgeSessionResult =
   | { status: "signed_out"; message: string }
   | { status: "no_profile"; message: string }
   | { status: "pending"; message: string }
   | { status: "denied"; message: string }
+  | { status: "unavailable"; message: string }
   | { status: "active"; message: string; session: JudgeSessionView };
 
 export type JudgeReport = { status: "success" | "invalid" | "denied" | "error"; message: string };
@@ -119,9 +125,13 @@ function bearer(idToken: string | null): Record<string, string> {
 
 function unreachable(error: unknown) {
   console.error("judge action failed:", error);
-  return error instanceof BackendError && error.status === 0
-    ? "Could not reach the backend."
-    : "The backend could not complete that request.";
+  if (error instanceof BackendError && error.status === 0) {
+    return "Could not reach the backend — it may not be running, or NEXT_PUBLIC_BACKEND_URL is wrong.";
+  }
+  if (error instanceof BackendError && error.status === 503) {
+    return "The backend is not configured for judge sign-in (FIREBASE_PROJECT_ID).";
+  }
+  return "The backend could not complete that request.";
 }
 
 export async function getJudgeSessionAction(idToken: string | null): Promise<JudgeSessionResult> {
@@ -129,7 +139,7 @@ export async function getJudgeSessionAction(idToken: string | null): Promise<Jud
   try {
     return await backendRequest<JudgeSessionResult>("/api/judge/session", { headers: bearer(idToken) });
   } catch (error) {
-    return { status: "denied", message: unreachable(error) };
+    return { status: "unavailable", message: unreachable(error) };
   }
 }
 

@@ -7,6 +7,8 @@ export type EntranceView =
   | { view: "apply" }
   | { view: "pending"; message: string }
   | { view: "denied"; message: string }
+  /** The backend could not be reached — nothing is known about this person yet. */
+  | { view: "unavailable"; message: string }
   | { view: "active"; judgeName: string };
 
 /**
@@ -24,6 +26,7 @@ export function JudgeEntrance({
   onApply,
   onSignIn,
   onSignOut,
+  onRetry,
 }: {
   view: EntranceView;
   email: string | null;
@@ -34,7 +37,31 @@ export function JudgeEntrance({
   onApply: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
+  onRetry: () => void;
 }) {
+  if (view.view === "unavailable") {
+    return (
+      <Panel tone="amber" className="relative p-6 sm:p-8">
+        <CornerMarks />
+        <Eyebrow tone="amber">Backend unreachable</Eyebrow>
+        <h2 className="mt-2 text-2xl font-semibold text-white">Could not check your judging access.</h2>
+        <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-300">{view.message}</p>
+        <p className="mt-1 text-xs text-zinc-500">
+          This says nothing about your application — nothing was checked. Signed in as{" "}
+          <span className="font-mono text-zinc-300">{email}</span>.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button type="button" onClick={onRetry} className={primaryButton}>
+            Try again
+          </button>
+          <button type="button" onClick={onSignOut} className={ghostButton}>
+            Sign out
+          </button>
+        </div>
+      </Panel>
+    );
+  }
+
   if (view.view === "active") {
     return (
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-neon/20 bg-zinc-950/60 px-4 py-3">

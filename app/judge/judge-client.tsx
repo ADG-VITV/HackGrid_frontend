@@ -72,6 +72,7 @@ export function JudgeClient() {
   else if (active) entrance = { view: "active", judgeName: active.judgeName };
   else if (session?.uid === user.uid && session.result.status === "pending") entrance = { view: "pending", message: session.result.message };
   else if (session?.uid === user.uid && session.result.status === "denied") entrance = { view: "denied", message: session.result.message };
+  else if (session?.uid === user.uid && session.result.status === "unavailable") entrance = { view: "unavailable", message: session.result.message };
   else entrance = { view: "apply" };
 
   function handleSignIn() {
