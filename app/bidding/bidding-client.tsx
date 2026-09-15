@@ -9,7 +9,8 @@ import { MemberView } from "./member-view";
 import { ResourceManager } from "./resource-manager";
 import { auctionTiles } from "./auction-data";
 import { useViewer } from "@/lib/use-viewer";
-import { getBiddingContextAction, type BiddingContext } from "./actions";
+import { Chip, CornerMarks, Eyebrow, Panel } from "@/components/ui/panel";
+import { getBiddingContextAction, type BiddingContext, type CapsuleContext } from "./actions";
 import { secondsUntil, useAuctionSocket, useSecondTick } from "./use-auction-socket";
 
 /** How often a member's watch view re-reads the database while a round is live. */
@@ -139,6 +140,16 @@ export function BiddingClient() {
   const eventComplete =
     eventStarted && context.capsules.every((capsule) => capsule.status === "CLOSED");
 
+  // A team with nothing live to join is on standby — before the first round,
+  // and again between rounds. Nothing about the auction is shown until the
+  // organiser presses Start on a round; the server refuses the room until
+  // then too, so this is a courtesy, not the gate.
+  const waitingForOrganiser =
+    Boolean(teamId) && !lookupPending && !liveCapsule && !eventComplete;
+  const nextCapsule = waitingForOrganiser
+    ? (context.capsules.find((capsule) => capsule.status !== "CLOSED") ?? null)
+    : null;
+
   const activeLot = room?.lots.find((lot) => lot.status === "OPEN") ?? null;
   const secondsLeft = secondsUntil(activeLot?.closesAt ?? null, clockSkew);
 
@@ -205,6 +216,11 @@ export function BiddingClient() {
         ) : null}
 
         <section className="flex min-h-0 flex-1 flex-col gap-[2.5%] lg:flex-row">
+          {waitingForOrganiser ? (
+            <div className="flex min-w-0 flex-col gap-4 self-start lg:w-[74%]">
+              <WaitingForOrganiser capsules={context.capsules} next={nextCapsule} />
+            </div>
+          ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-[2%] self-start rounded-[2.5rem] border border-neon/20 bg-black p-[1.5%] shadow-[0_0_80px_rgba(66,255,90,0.06)] lg:w-[74%]">
             <section className="flex min-h-0 flex-1 flex-col gap-[2%] rounded-3xl border border-neon/20 bg-zinc-950/60 p-[2%]">
               {context.capsules.map((capsule) => {
@@ -326,6 +342,7 @@ export function BiddingClient() {
               ) : null}
             </section>
           </div>
+          )}
 
           <aside className="flex w-full flex-col gap-4 self-start lg:w-[23%]">
             <ResourceManager
@@ -342,5 +359,102 @@ export function BiddingClient() {
         </p>
       </div>
     </main>
+  );
+}
+
+/**
+ * The bidding page on standby. A team sees this from the moment it exists
+ * until the organiser presses Start on a round, and again between rounds.
+ * No tiers, no pod, no clock — only the running order and where it has got
+ * to. The page polls in this state, so it moves on by itself the moment the
+ * organiser acts.
+ */
+function WaitingForOrganiser({
+  capsules,
+  next,
+}: {
+  capsules: CapsuleContext[];
+  next: CapsuleContext | null;
+}) {
+  const betweenRounds = capsules.some((capsule) => capsule.status === "CLOSED");
+
+  return (
+    <Panel className="relative flex min-h-[420px] flex-col p-6 sm:p-8">
+      <CornerMarks />
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Eyebrow tone="amber">Standby</Eyebrow>
+        <Chip tone="amber">
+          <span className="size-1.5 animate-pulse rounded-full bg-amber-400" aria-hidden />
+          Waiting for the organiser
+        </Chip>
+      </div>
+
+      <div className="flex flex-1 flex-col justify-center py-8">
+        <h2 className="text-3xl font-semibold tracking-wide text-white sm:text-4xl">
+          Waiting for the organiser to start the auction.
+        </h2>
+        <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-400">
+          {next ? (
+            <>
+              {betweenRounds ? "The next round, " : "The first round, "}
+              <span className="text-zinc-100">
+                Round {next.sequenceOrder} · {next.name}
+              </span>
+              , opens on the organiser&apos;s signal. Your pod, its tiers and the clock appear here
+              the moment it does — keep this page open; it changes on its own.
+            </>
+          ) : (
+            "The next round opens on the organiser's signal. Keep this page open; it changes on its own."
+          )}
+        </p>
+      </div>
+
+      <div className="border-t border-neon/10 pt-4">
+        <Eyebrow>Running order</Eyebrow>
+        <ol className="mt-2 grid gap-2 sm:grid-cols-4">
+          {capsules.map((capsule) => {
+            const isClosed = capsule.status === "CLOSED";
+            const isNext = capsule.key === next?.key;
+            return (
+              <li
+                key={capsule.key}
+                className={`rounded-xl border px-3 py-2.5 ${
+                  isNext
+                    ? "border-amber-500/40 bg-amber-500/[0.05]"
+                    : isClosed
+                      ? "border-white/10 bg-black/60"
+                      : "border-white/5 bg-black/40"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`grid size-5 shrink-0 place-items-center rounded font-mono text-[0.55rem] ${
+                      isNext
+                        ? "bg-amber-500/20 text-amber-300"
+                        : isClosed
+                          ? "bg-zinc-800 text-zinc-500"
+                          : "bg-zinc-900 text-zinc-700"
+                    }`}
+                  >
+                    {capsule.sequenceOrder}
+                  </span>
+                  <span
+                    className={`truncate text-xs tracking-wide uppercase ${
+                      isNext ? "text-amber-200" : isClosed ? "text-zinc-400" : "text-zinc-600"
+                    }`}
+                  >
+                    {capsule.name}
+                  </span>
+                </div>
+                <p className="mt-1 font-mono text-[0.55rem] tracking-[0.12em] text-zinc-600 uppercase">
+                  {isClosed ? "settled" : isNext ? "up next · waiting" : "locked"}
+                </p>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </Panel>
   );
 }
