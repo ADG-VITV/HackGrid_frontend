@@ -73,3 +73,66 @@ body {
     transform: rotateX(-90deg);
   }
 }
+/* ------------------------------------------------------------------ */
+/* Judge portal score slider (app/judge/evaluation-form.tsx)           */
+/* --fill is the scored fraction, painted neon; the rest stays dim.    */
+/* ------------------------------------------------------------------ */
+
+.hg-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  outline: none;
+  margin: 0;
+}
+
+.hg-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    rgba(66, 255, 90, 0.6) 0%,
+    rgba(66, 255, 90, 0.6) var(--fill, 0%),
+    rgba(255, 255, 255, 0.08) var(--fill, 0%),
+    rgba(255, 255, 255, 0.08) 100%
+  );
+}
+
+.hg-range::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    rgba(66, 255, 90, 0.6) 0%,
+    rgba(66, 255, 90, 0.6) var(--fill, 0%),
+    rgba(255, 255, 255, 0.08) var(--fill, 0%),
+    rgba(255, 255, 255, 0.08) 100%
+  );
+}
+
+.hg-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 9999px;
+  border: 2px solid rgba(66, 255, 90, 0.9);
+  background: #000;
+  box-shadow: 0 0 10px rgba(66, 255, 90, 0.45);
+  cursor: pointer;
+}
+
+.hg-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  border: 2px solid rgba(66, 255, 90, 0.9);
+  background: #000;
+  box-shadow: 0 0 10px rgba(66, 255, 90, 0.45);
+  cursor: pointer;
+}
+
+.hg-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(66, 255, 90, 0.25);
+}

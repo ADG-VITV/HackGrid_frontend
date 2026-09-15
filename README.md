@@ -236,7 +236,25 @@ console: CORS error on `/socket.io/?EIO=4…`).
 | | `setPodRemainderFlagAction(key, podId, flag)` | `PATCH /api/admin/capsules/:key/pods/:podId/remainder` |
 | | `deleteManualPodAction(key, podId)` | `DELETE /api/admin/capsules/:key/pods/:podId` |
 
+| | `reviewJudgeApplicationAction(id, decision)` | `POST /api/admin/judges/applications/:id/approve` or `/reject` |
+| | `setJudgeStatusAction(judgeId, status)` | `POST /api/admin/judges/:judgeId/suspend` or `/reinstate` |
+| `/judge` | `getJudgeSessionAction(idToken)` on sign-in | `GET /api/judge/session` |
+| | `applyAsJudgeAction(idToken, code)` | `POST /api/judge/apply` |
+| | `searchJudgeTeamsAction(idToken, q)` (debounced) | `GET /api/judge/teams?q=` |
+| | `getJudgeReviewAction(idToken, teamId)` | `GET /api/judge/teams/:id/review` |
+| | `submitJudgeEvaluationAction(idToken, teamId, …)` | `PUT /api/judge/teams/:id/evaluation` |
+| | "Go to evaluations" popup: `verifyResultsAccessAction(idToken, { name, code })` | `POST /api/judge/results-access` |
+| `/judge/evaluations` | `getJudgeResultsAction(idToken, code)` — refused without the popup | `GET /api/judge/results` |
+
 All admin mutations send `x-admin-key` when `ADMIN_API_KEY` is set.
+
+The judge actions forward the browser's **Firebase ID token** as
+`Authorization: Bearer …`; the backend verifies it (it needs
+`FIREBASE_PROJECT_ID`, the same value as `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+here). Judges must sign in with Google for real — the dev "act as" picker has
+no Firebase session, so it cannot judge. The invitation code entered in the
+"Go to evaluations" popup is kept in `sessionStorage` for that tab only and is
+re-checked by the backend on every results read.
 
 ---
 
