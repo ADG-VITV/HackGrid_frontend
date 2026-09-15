@@ -3,14 +3,20 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronIcon } from "./auction-icon";
-import { ExpandedWorkspace } from "./expanded-workspace";
+import { Badge, ExpandedWorkspace, Shell } from "./expanded-workspace";
 import { IdentityBar } from "./identity-bar";
 import { MemberView } from "./member-view";
 import { ResourceManager } from "./resource-manager";
+import { RoundComplete, rowsFromSummary } from "./round-complete";
 import { auctionTiles } from "./auction-data";
 import { useViewer } from "@/lib/use-viewer";
 import { Chip, CornerMarks, Eyebrow, Panel } from "@/components/ui/panel";
-import { getBiddingContextAction, type BiddingContext, type CapsuleContext } from "./actions";
+import {
+  getBiddingContextAction,
+  type BiddingContext,
+  type CapsuleContext,
+  type PodSummary,
+} from "./actions";
 import { secondsUntil, useAuctionSocket, useSecondTick } from "./use-auction-socket";
 
 /** How often a member's watch view re-reads the database while a round is live. */
@@ -31,6 +37,8 @@ const emptyContext: BiddingContext = {
   team: null,
   viewerRole: null,
   currentLot: null,
+  currentResult: null,
+  podSummary: null,
   resources: null,
   capsules: auctionTiles.map((tile, index) => ({
     key: tile.id,
@@ -55,7 +63,11 @@ export function BiddingClient() {
     identity: "",
     context: emptyContext,
   });
-  const [expanded, setExpanded] = useState(true);
+  // Exactly one capsule holds the open panel at a time (see `openKey` below).
+  // A click folds it; remembering *which* key was folded means a new round —
+  // a different key — arrives expanded on its own, and the previous one
+  // collapses with it.
+  const [collapsedKey, setCollapsedKey] = useState<string | null>(null);
 
   useSecondTick();
 
@@ -140,15 +152,27 @@ export function BiddingClient() {
   const eventComplete =
     eventStarted && context.capsules.every((capsule) => capsule.status === "CLOSED");
 
-  // A team with nothing live to join is on standby — before the first round,
-  // and again between rounds. Nothing about the auction is shown until the
-  // organiser presses Start on a round; the server refuses the room until
+  // With nothing live, the round that finished most recently keeps its panel
+  // open: its results stay on screen until the organiser opens the next one.
+  const finishedCapsule = liveCapsule
+    ? null
+    : (context.capsules.findLast((capsule) => capsule.status === "CLOSED") ?? null);
+  // The next round in the running order — what the organiser opens next.
+  const nextCapsule = context.capsules.find((capsule) => capsule.status !== "CLOSED" && capsule.key !== liveCapsule?.key) ?? null;
+
+  // Before the first round a team has nothing to look at but the running
+  // order, so it gets the standby panel. Nothing about the auction is shown
+  // until the organiser presses Start; the server refuses the room until
   // then too, so this is a courtesy, not the gate.
-  const waitingForOrganiser =
-    Boolean(teamId) && !lookupPending && !liveCapsule && !eventComplete;
-  const nextCapsule = waitingForOrganiser
-    ? (context.capsules.find((capsule) => capsule.status !== "CLOSED") ?? null)
-    : null;
+  const standbyBeforeStart =
+    Boolean(teamId) && !lookupPending && !liveCapsule && !finishedCapsule && !eventComplete;
+
+  // Which capsule holds the open panel: the live round, else the one that just
+  // finished. When this changes — the organiser started the next round — the
+  // old panel collapses and the new one expands, with no click needed.
+  const openKey = liveCapsule?.key ?? finishedCapsule?.key ?? null;
+  const panelOpen = openKey !== null && collapsedKey !== openKey;
+  const togglePanel = () => setCollapsedKey((current) => (current === openKey ? null : openKey));
 
   const activeLot = room?.lots.find((lot) => lot.status === "OPEN") ?? null;
   const secondsLeft = secondsUntil(activeLot?.closesAt ?? null, clockSkew);
@@ -195,7 +219,7 @@ export function BiddingClient() {
       <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4">
         <IdentityBar
           teamLabel={identityLabel}
-          podLabel={room?.pod.label ?? liveCapsule?.podLabel ?? null}
+          podLabel={room?.pod.label ?? liveCapsule?.podLabel ?? context.podSummary?.podLabel ?? null}
           connection={connection}
           balance={context.resources?.remaining ?? null}
         />
@@ -216,7 +240,7 @@ export function BiddingClient() {
         ) : null}
 
         <section className="flex min-h-0 flex-1 flex-col gap-[2.5%] lg:flex-row">
-          {waitingForOrganiser ? (
+          {standbyBeforeStart ? (
             <div className="flex min-w-0 flex-col gap-4 self-start lg:w-[74%]">
               <WaitingForOrganiser capsules={context.capsules} next={nextCapsule} />
             </div>
@@ -226,9 +250,11 @@ export function BiddingClient() {
               {context.capsules.map((capsule) => {
                 const isLive = capsule.status === "LIVE";
                 const isClosed = capsule.status === "CLOSED";
-                // The pod room belongs to the current round only, never to a
-                // tile that merely shares its status.
-                const isOpen = capsule.key === liveCapsule?.key && expanded;
+                // Only the live round — or, with nothing live, the round that
+                // just finished — can hold the open panel; every other tile is
+                // inert, however its status happens to read.
+                const holdsPanel = capsule.key === openKey;
+                const isOpen = holdsPanel && panelOpen;
                 const tile = auctionTiles.find((t) => t.id === capsule.key);
                 const biddable =
                   tile?.items.filter((item) => item.minIncrement !== null).length ?? 0;
@@ -258,8 +284,8 @@ export function BiddingClient() {
 
                       <button
                         type="button"
-                        onClick={() => isLive && setExpanded((value) => !value)}
-                        disabled={!isLive}
+                        onClick={() => holdsPanel && togglePanel()}
+                        disabled={!holdsPanel}
                         aria-expanded={isOpen}
                         className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left font-medium disabled:cursor-default"
                       >
@@ -289,19 +315,21 @@ export function BiddingClient() {
 
                         <span className="font-mono text-[0.58rem] tracking-[0.14em] text-zinc-600 uppercase">
                           {isClosed
-                            ? "settled"
+                            ? holdsPanel
+                              ? "ended · waiting for the organiser"
+                              : "settled"
                             : isLive
                               ? `live · pods of ${capsule.tierCount}`
                               : `locked · ${biddable} bid rounds`}
                         </span>
                       </button>
 
-                      {isLive ? (
+                      {holdsPanel ? (
                         <button
                           type="button"
-                          onClick={() => setExpanded((value) => !value)}
+                          onClick={togglePanel}
                           aria-label={isOpen ? "Collapse" : "Expand"}
-                          className="shrink-0 px-2 text-neon"
+                          className={`shrink-0 px-2 ${isLive ? "text-neon" : "text-zinc-400"}`}
                         >
                           <ChevronIcon open={isOpen} />
                         </button>
@@ -317,7 +345,7 @@ export function BiddingClient() {
                     >
                       <div className="min-h-0 overflow-hidden">
                         <div className="mx-auto w-[96%]">
-                          {isOpen ? (
+                          {isOpen && isLive ? (
                             <ExpandedWorkspace
                               capsuleName={capsule.name}
                               room={room}
@@ -325,7 +353,15 @@ export function BiddingClient() {
                               clockSkew={clockSkew}
                               feedback={feedback}
                               notStartedMessage={workspaceMessage()}
+                              nextCapsuleName={nextCapsule?.name ?? null}
                               onBid={placeBid}
+                            />
+                          ) : isOpen ? (
+                            <FinishedRound
+                              capsule={capsule}
+                              summary={context.podSummary}
+                              youTeamId={context.team?.id ?? null}
+                              nextCapsuleName={nextCapsule?.name ?? null}
                             />
                           ) : null}
                         </div>
@@ -335,7 +371,7 @@ export function BiddingClient() {
                 );
               })}
 
-              {!liveCapsule ? (
+              {!liveCapsule && !finishedCapsule ? (
                 <p className="px-2 py-4 text-center text-xs leading-5 text-zinc-600">
                   {workspaceMessage()}
                 </p>
@@ -363,8 +399,55 @@ export function BiddingClient() {
 }
 
 /**
+ * The panel a finished round keeps open until the organiser starts the next
+ * one. The room is gone by now (a socket only exists for a live round), so
+ * this is drawn from the context's pod summary — the same settlements rows.
+ */
+function FinishedRound({
+  capsule,
+  summary,
+  youTeamId,
+  nextCapsuleName,
+}: {
+  capsule: CapsuleContext;
+  summary: PodSummary | null;
+  youTeamId: number | null;
+  nextCapsuleName: string | null;
+}) {
+  const forThisRound = summary && summary.capsuleKey === capsule.key ? summary : null;
+
+  return (
+    <Shell capsuleName={capsule.name} right={<Badge>Ended</Badge>}>
+      <div className="flex min-w-0 flex-1 flex-col px-[4%] pt-6 pb-6">
+        {forThisRound ? (
+          <RoundComplete
+            capsuleName={capsule.name}
+            podLabel={forThisRound.podLabel}
+            rows={rowsFromSummary(forThisRound)}
+            youTeamId={youTeamId}
+            capsuleClosed
+            nextCapsuleName={nextCapsuleName}
+          />
+        ) : (
+          <div className="flex flex-1 flex-col justify-center text-center">
+            <p className="text-sm text-zinc-500">
+              {capsule.name} has ended. Your team was not seated in a pod for it.
+            </p>
+            <p className="mt-2 text-xs text-zinc-600">
+              {nextCapsuleName
+                ? `Waiting for the organiser to start ${nextCapsuleName}.`
+                : "That was the last round."}
+            </p>
+          </div>
+        )}
+      </div>
+    </Shell>
+  );
+}
+
+/**
  * The bidding page on standby. A team sees this from the moment it exists
- * until the organiser presses Start on a round, and again between rounds.
+ * until the organiser presses Start on the first round.
  * No tiers, no pod, no clock — only the running order and where it has got
  * to. The page polls in this state, so it moves on by itself the moment the
  * organiser acts.

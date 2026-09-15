@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MinusIcon, PlusIcon } from "./auction-icon";
 import { compactIncrement, incrementLabel } from "./auction-data";
 import { Credits } from "./credits";
+import { RoundComplete, rowsFromRoom } from "./round-complete";
 import { secondsUntil, type BidFeedback, type ConnectionState } from "./use-auction-socket";
 import type { LotView, RoomState } from "@/lib/socket-events";
 
@@ -21,6 +22,8 @@ type WorkspaceProps = {
   clockSkew: number;
   feedback: BidFeedback;
   notStartedMessage: string | null;
+  /** What the organiser opens after this round; null after the last. */
+  nextCapsuleName: string | null;
   onBid: (lotId: string, amount: number) => void;
 };
 
@@ -31,6 +34,7 @@ export function ExpandedWorkspace({
   clockSkew,
   feedback,
   notStartedMessage,
+  nextCapsuleName,
   onBid,
 }: WorkspaceProps) {
   const activeLot = room?.lots.find((lot) => lot.status === "OPEN") ?? null;
@@ -85,6 +89,11 @@ export function ExpandedWorkspace({
     !yourResult &&
     room.lots.some((lot) => lot.status === "PENDING");
 
+  // Every tier in the pod has settled: the round is over for this pod. The
+  // server pushes a final ROOM_STATE for exactly this moment, so the last
+  // results (including the auto-assigned tier) are in `room.lots`.
+  const podComplete = room.lots.length > 0 && room.lots.every((lot) => lot.status === "CLOSED");
+
   const youHoldTop = activeLot?.top?.teamId === room.you.teamId;
   const secondsLeft = secondsUntil(activeLot?.closesAt ?? null, clockSkew);
   const urgent = secondsLeft !== null && secondsLeft <= 10;
@@ -108,31 +117,44 @@ export function ExpandedWorkspace({
       right={
         <div
           className={`flex items-center gap-2 rounded-xl border px-4 py-2 font-mono text-sm font-semibold ${
-            !activeLot || activeLot.awaitingQuorum
-              ? "border-zinc-700 bg-zinc-900 text-zinc-400"
-              : urgent
-                ? "animate-pulse border-red-500/50 bg-red-500/10 text-red-400"
-                : "border-neon/40 bg-neon/[0.08] text-neon"
+            podComplete
+              ? "border-neon/50 bg-neon/10 text-neon"
+              : !activeLot || activeLot.awaitingQuorum
+                ? "border-zinc-700 bg-zinc-900 text-zinc-400"
+                : urgent
+                  ? "animate-pulse border-red-500/50 bg-red-500/10 text-red-400"
+                  : "border-neon/40 bg-neon/[0.08] text-neon"
           }`}
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <circle cx="12" cy="12" r="10" />
             <polyline points="12 6 12 12 16 14" />
           </svg>
-          {remainderWaiting
-            ? "WAITING"
-            : !activeLot
-              ? "CLOSED"
-              : activeLot.awaitingQuorum
-                ? "ON HOLD"
-                : formatTimer(secondsLeft)}
+          {podComplete
+            ? "DONE"
+            : remainderWaiting
+              ? "WAITING"
+              : !activeLot
+                ? "CLOSED"
+                : activeLot.awaitingQuorum
+                  ? "ON HOLD"
+                  : formatTimer(secondsLeft)}
         </div>
       }
     >
       <div className="flex min-w-0 flex-1 flex-col gap-6 px-[4%] pt-6 pb-6 lg:flex-row lg:gap-[3%]">
         {/* -------------------------------------------------- bidding column */}
         <section className="flex min-w-0 flex-col lg:w-[58%]">
-          {activeLot ? (
+          {podComplete ? (
+            <RoundComplete
+              capsuleName={capsuleName}
+              podLabel={room.pod.label}
+              rows={rowsFromRoom(room)}
+              youTeamId={room.you.teamId}
+              capsuleClosed={false}
+              nextCapsuleName={nextCapsuleName}
+            />
+          ) : activeLot ? (
             <>
               <p className="text-sm text-zinc-400">
                 <span className="text-zinc-500">Now bidding:</span>{" "}
@@ -468,7 +490,7 @@ function LotRow({ lot, youTeamId }: { lot: LotView; youTeamId: number }) {
   );
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
+export function Badge({ children }: { children: React.ReactNode }) {
   return (
     <span className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 font-mono text-xs tracking-wide text-zinc-400 uppercase">
       {children}
@@ -476,7 +498,8 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Shell({
+/** The framed panel a capsule expands into; shared with the finished-round view. */
+export function Shell({
   capsuleName,
   right,
   children,

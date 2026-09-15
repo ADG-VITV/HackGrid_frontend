@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import type { BiddingContext } from "./actions";
-import { ResourceManager } from "./resource-manager";
+import type { BiddingContext, PodSummary } from "./actions";
+import { Credits } from "./credits";
+import { ResourceManager, sourceLabel } from "./resource-manager";
+import { RoundComplete, rowsFromSummary } from "./round-complete";
 import { secondsUntil } from "./use-auction-socket";
 import { Chip, CornerMarks, Eyebrow, Panel, ghostButton } from "@/components/ui/panel";
 
@@ -18,9 +20,12 @@ function formatTimer(seconds: number | null) {
  *
  * Members never enter a pod room — only the lead's account is let in, and a
  * second socket would count towards quorum. So this view is fed by the same
- * database read the ledger uses, polled while a round is live. It shows the
- * tier the lead is bidding on right now and, in the Resource Manager, every
- * round the lead has already finished.
+ * database read the ledger uses, polled while a round is live. It is laid out
+ * like the lead's room: the round's status on the left, the pod on the right
+ * — the tier the lead is bidding on, then, the moment the team's lot settles,
+ * what the team secured, and once the pod is done, who in it got what. The
+ * Resource Manager alongside shows the same settlements the lead sees, at
+ * the same time; it is the only place the four rounds are listed.
  */
 export function MemberView({ context, polling }: { context: BiddingContext; polling: boolean }) {
   const team = context.team!;
@@ -28,7 +33,22 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
   const started = context.capsules.some((capsule) => capsule.status !== "PENDING");
   const complete = started && context.capsules.every((capsule) => capsule.status === "CLOSED");
   const lot = context.currentLot;
+  // Set by the server from the settlements table the instant the team's lot
+  // closes. Once it exists the lead is out of this round, so the pod's next
+  // open tier is no longer "what your lead is fighting for".
+  const won = context.currentResult;
+  // The team's pod in the live round, or in the one that just finished —
+  // everyone in it and what they ended up with, from the same settlements.
+  const pod = context.podSummary;
+  const podDone = Boolean(pod?.complete);
+  const nextCapsule =
+    context.capsules.find((capsule) => capsule.status !== "CLOSED" && capsule.key !== live?.key) ?? null;
   const secondsLeft = secondsUntil(lot?.closesAt ?? null, 0);
+
+  // The round the panel is about: the live one, else the one that just
+  // finished (its pod stays up until the organiser opens the next).
+  const shownName = live?.name ?? pod?.capsuleName ?? null;
+  const shownOrder = live?.sequenceOrder ?? context.capsules.find((c) => c.key === pod?.capsuleKey)?.sequenceOrder ?? null;
 
   return (
     <main className="flex min-h-dvh flex-col overflow-x-hidden bg-black p-4 pt-20 text-zinc-100 sm:p-[3%] sm:pt-24">
@@ -46,92 +66,138 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
 
         <section className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-[2.5%]">
           <div className="flex min-w-0 flex-col gap-4 lg:w-[74%]">
-            <Panel className="relative flex min-h-[380px] flex-col p-6 sm:p-8">
+            <Panel className="relative flex min-h-[420px] flex-col p-6 sm:p-8">
               <CornerMarks />
 
-              {live ? (
-                <>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <Eyebrow tone="neon">
-                      Round {live.sequenceOrder} · {live.name}
-                      {live.podLabel ? ` · ${live.podLabel}` : ""}
-                    </Eyebrow>
-                    <span
-                      className={`flex items-center gap-2 rounded-xl border px-4 py-2 font-mono text-sm font-semibold ${
-                        lot?.closesAt
-                          ? secondsLeft !== null && secondsLeft <= 10
-                            ? "animate-pulse border-red-500/50 bg-red-500/10 text-red-400"
-                            : "border-neon/40 bg-neon/[0.08] text-neon"
-                          : "border-zinc-700 bg-zinc-900 text-zinc-400"
-                      }`}
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <circle cx="12" cy="12" r="10" />
-                        <polyline points="12 6 12 12 16 14" />
-                      </svg>
-                      {lot ? (lot.closesAt ? formatTimer(secondsLeft) : "ON HOLD") : "—:—"}
-                    </span>
-                  </div>
+              {/* ------------------------------------------------ header */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Eyebrow tone={shownName ? "neon" : "amber"}>
+                  {shownName
+                    ? `Round ${shownOrder} · ${shownName}${pod ? ` · ${pod.podLabel}` : ""}`
+                    : "Standby"}
+                </Eyebrow>
+                <span
+                  className={`flex items-center gap-2 rounded-xl border px-4 py-2 font-mono text-sm font-semibold ${
+                    podDone || won
+                      ? "border-neon/50 bg-neon/10 text-neon"
+                      : lot?.closesAt
+                        ? secondsLeft !== null && secondsLeft <= 10
+                          ? "animate-pulse border-red-500/50 bg-red-500/10 text-red-400"
+                          : "border-neon/40 bg-neon/[0.08] text-neon"
+                        : "border-zinc-700 bg-zinc-900 text-zinc-400"
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  {podDone
+                    ? "ENDED"
+                    : won
+                      ? "DONE"
+                      : lot
+                        ? lot.closesAt
+                          ? formatTimer(secondsLeft)
+                          : "ON HOLD"
+                        : "—:—"}
+                </span>
+              </div>
 
-                  <div className="flex flex-1 flex-col justify-center py-8">
-                    <Eyebrow>On the block now</Eyebrow>
-                    {lot ? (
-                      <>
-                        <h2 className="mt-3 text-3xl font-semibold tracking-wide text-white sm:text-5xl">
-                          {lot.name}
-                        </h2>
-                        <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                          Tier {lot.tierRank} of {live.tierCount}. Your lead{" "}
-                          <span className="text-zinc-200">{team.leadName}</span> is in the room. What
-                          the team ends up with shows in the ledger once this round closes.
-                        </p>
-                      </>
-                    ) : live.podId ? (
-                      <>
-                        <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">
-                          Between tiers.
-                        </h2>
-                        <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                          Nothing is open in {live.podLabel} this second — the next tier opens on its own,
-                          or the pod is done and waiting on the others.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">
-                          Not in a pod this round.
-                        </h2>
-                        <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                          Your team was not drawn into a pod for {live.name}.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </>
-              ) : complete ? (
-                <div className="flex flex-1 flex-col justify-center">
-                  <Eyebrow tone="neon">Auction finished</Eyebrow>
-                  <h2 className="mt-3 text-3xl font-semibold text-white">Every round is settled.</h2>
-                  <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                    Your team&apos;s final product spec is in the Resource Manager.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-1 flex-col justify-center">
-                  <Eyebrow tone="amber">Standby</Eyebrow>
-                  <h2 className="mt-3 text-3xl font-semibold text-white">
-                    Waiting for the organiser to start the auction.
-                  </h2>
-                  <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                    {started
-                      ? "The next round opens on the organiser's signal."
-                      : "The first round opens on the organiser's signal."}{" "}
-                    This page changes on its own the moment it does.
-                  </p>
-                </div>
-              )}
+              {/* ------------------------------------------- two columns */}
+              <div className="flex min-w-0 flex-1 flex-col gap-6 pt-6 lg:flex-row lg:gap-[3%]">
+                {/* status column */}
+                <section className={`flex min-w-0 flex-col ${pod ? "lg:w-[58%]" : "flex-1"}`}>
+                  {podDone && pod ? (
+                    <RoundComplete
+                      capsuleName={pod.capsuleName}
+                      podLabel={pod.podLabel}
+                      rows={rowsFromSummary(pod)}
+                      youTeamId={team.id}
+                      capsuleClosed={pod.capsuleStatus === "CLOSED"}
+                      nextCapsuleName={nextCapsule?.name ?? null}
+                    />
+                  ) : live ? (
+                    <div className="flex flex-1 flex-col justify-center py-4">
+                      {won ? (
+                        <>
+                          <Eyebrow tone="neon">Your team secured</Eyebrow>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-wide text-white sm:text-4xl">
+                            {won.tierName}
+                          </h2>
+                          <p className="mt-3 font-mono text-2xl font-semibold text-neon sm:text-3xl">
+                            <Credits value={won.pricePaid} />
+                          </p>
+                          <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                            {sourceLabel[won.priceSource] ?? won.priceSource} · your lead{" "}
+                            <span className="text-zinc-200">{team.leadName}</span> is done for this round.
+                            It is already deducted from the balance in the ledger. The rest of the pod is
+                            still bidding; the next round opens when the organiser starts it.
+                          </p>
+                        </>
+                      ) : lot ? (
+                        <>
+                          <Eyebrow>On the block now</Eyebrow>
+                          <h2 className="mt-3 text-3xl font-semibold tracking-wide text-white sm:text-4xl">
+                            {lot.name}
+                          </h2>
+                          <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                            Tier {lot.tierRank} of {live.tierCount}. Your lead{" "}
+                            <span className="text-zinc-200">{team.leadName}</span> is in the room. The
+                            moment your team&apos;s tier settles it shows here and in the ledger.
+                          </p>
+                        </>
+                      ) : live.podId ? (
+                        <>
+                          <Eyebrow>Between tiers</Eyebrow>
+                          <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">
+                            Nothing is open this second.
+                          </h2>
+                          <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                            The next tier in {live.podLabel} opens on its own, or the pod is waiting on
+                            the rest to arrive.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Eyebrow>Not seated</Eyebrow>
+                          <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">
+                            Not in a pod this round.
+                          </h2>
+                          <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                            Your team was not drawn into a pod for {live.name}.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ) : complete ? (
+                    <div className="flex flex-1 flex-col justify-center py-4">
+                      <Eyebrow tone="neon">Auction finished</Eyebrow>
+                      <h2 className="mt-3 text-3xl font-semibold text-white">Every round is settled.</h2>
+                      <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                        Your team&apos;s final product spec is in the Resource Manager.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-1 flex-col justify-center py-4">
+                      <Eyebrow tone="amber">Standby</Eyebrow>
+                      <h2 className="mt-3 text-3xl font-semibold text-white">
+                        Waiting for the organiser to start the auction.
+                      </h2>
+                      <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                        {started
+                          ? "The next round opens on the organiser's signal."
+                          : "The first round opens on the organiser's signal."}{" "}
+                        This page changes on its own the moment it does.
+                      </p>
+                    </div>
+                  )}
+                </section>
 
-              <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-neon/10 pt-4">
+                {/* pod column — the same slot the lead's room uses for the pod */}
+                {pod ? <PodColumn pod={pod} youTeamId={team.id} /> : null}
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-neon/10 pt-4">
                 <p className="text-[0.62rem] text-zinc-600">
                   Only the lead&apos;s account can enter the bidding room.
                 </p>
@@ -140,49 +206,6 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                 </Link>
               </div>
             </Panel>
-
-            <ol className="grid gap-2 sm:grid-cols-4">
-              {context.capsules.map((capsule) => {
-                const isLive = capsule.status === "LIVE";
-                const isClosed = capsule.status === "CLOSED";
-                return (
-                  <li
-                    key={capsule.key}
-                    className={`rounded-xl border px-3 py-2.5 ${
-                      isLive
-                        ? "border-neon/60 bg-neon/[0.06]"
-                        : isClosed
-                          ? "border-white/10 bg-black/60"
-                          : "border-white/5 bg-black/40"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`grid size-5 shrink-0 place-items-center rounded font-mono text-[0.55rem] ${
-                          isLive
-                            ? "bg-neon/20 text-neon"
-                            : isClosed
-                              ? "bg-zinc-800 text-zinc-500"
-                              : "bg-zinc-900 text-zinc-700"
-                        }`}
-                      >
-                        {capsule.sequenceOrder}
-                      </span>
-                      <span
-                        className={`truncate text-xs tracking-wide uppercase ${
-                          isLive ? "text-neon" : isClosed ? "text-zinc-400" : "text-zinc-600"
-                        }`}
-                      >
-                        {capsule.name}
-                      </span>
-                    </div>
-                    <p className="mt-1 font-mono text-[0.55rem] tracking-[0.12em] text-zinc-600 uppercase">
-                      {isClosed ? "settled" : isLive ? "live" : "locked"}
-                    </p>
-                  </li>
-                );
-              })}
-            </ol>
           </div>
 
           <aside className="flex w-full flex-col gap-4 self-start lg:w-[23%]">
@@ -190,17 +213,72 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
               resources={context.resources}
               capsules={context.capsules}
               identityHint={null}
-              revealLive={false}
               showBidCap={false}
             />
           </aside>
         </section>
 
         <p className="pb-2 text-center text-[0.62rem] text-zinc-700">
-          Rounds run one at a time in order · your lead is the only bidder · the ledger updates when a
-          round closes
+          Rounds run one at a time in order · your lead is the only bidder · the ledger updates the
+          moment a tier settles
         </p>
       </div>
     </main>
+  );
+}
+
+/**
+ * The pod, as the lead's side column shows it: every team in it and the tier
+ * each has taken so far. Sits beside the status, inside the same panel.
+ */
+function PodColumn({ pod, youTeamId }: { pod: PodSummary; youTeamId: number }) {
+  return (
+    <section className="flex min-w-0 flex-col lg:w-[39%]">
+      <div className="rounded-[20px] border border-neon/20 bg-zinc-950/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-[0.65rem] font-semibold tracking-[0.16em] text-zinc-500 uppercase">
+            {pod.podLabel} · who has what
+          </h4>
+          <span className="font-mono text-[0.6rem] text-zinc-500">
+            {pod.settledLots} of {pod.lotCount} settled
+          </span>
+        </div>
+        <ul className="mt-3 space-y-1.5">
+          {pod.teams.map((row) => {
+            const isYou = row.teamId === youTeamId;
+            return (
+              <li
+                key={row.teamId}
+                className={`rounded-lg px-2.5 py-1.5 text-xs ${
+                  isYou ? "bg-neon/[0.07] text-neon" : "text-zinc-300"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate">
+                    {row.teamName}
+                    {isYou ? <span className="ml-1.5 text-[0.6rem]">you</span> : null}
+                  </span>
+                  <span className="shrink-0 truncate font-mono text-[0.6rem] text-zinc-500">
+                    {row.leadName}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between gap-2 text-[0.62rem]">
+                  {row.result ? (
+                    <>
+                      <span className="min-w-0 truncate text-zinc-400">{row.result.tierName}</span>
+                      <span className="shrink-0 font-mono text-neon">
+                        <Credits value={row.result.pricePaid} />
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-zinc-600">still bidding</span>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </section>
   );
 }

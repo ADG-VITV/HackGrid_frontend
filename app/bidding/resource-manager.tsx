@@ -4,7 +4,8 @@ import { formatCredits } from "./auction-data";
 import { Credits } from "./credits";
 import type { CapsuleContext, TeamResources } from "./actions";
 
-const sourceLabel: Record<string, string> = {
+/** How a tier was obtained, in the rulebook's words. Shared with the member view. */
+export const sourceLabel: Record<string, string> = {
   COMPETITIVE: "won at auction",
   AUTO_ASSIGNED: "last team standing",
   NO_BIDS_ASSIGNED: "assigned, nobody bid",
@@ -20,21 +21,21 @@ const sourceLabel: Record<string, string> = {
  * Present in development and in production — this is the team's real ledger,
  * not a debugging aid.
  *
- * `revealLive` is the lead's view: a tier shows the moment it settles. Members
- * see a round only once the lead has moved past it — the live capsule stays
- * "in progress" and its cost is not yet counted.
+ * One ledger for everyone: a tier shows here the instant its lot settles,
+ * for the lead and for every member, and the balance is the backend's
+ * `spent` / `remaining` — never recomputed on the client. There is no
+ * "reveal later" for members; the settlements table is the truth and it is
+ * written once, at the moment of the win.
  */
 export function ResourceManager({
   resources,
   capsules,
   identityHint,
-  revealLive = true,
   showBidCap = true,
 }: {
   resources: TeamResources | null;
   capsules: CapsuleContext[];
   identityHint: string | null;
-  revealLive?: boolean;
   showBidCap?: boolean;
 }) {
   if (!resources) {
@@ -48,14 +49,10 @@ export function ResourceManager({
     );
   }
 
-  const statusByKey = new Map(capsules.map((capsule) => [capsule.key, capsule.status]));
-  const visibleOwned = revealLive
-    ? resources.owned
-    : resources.owned.filter((row) => statusByKey.get(row.capsuleKey) === "CLOSED");
-  const ownedByCapsule = new Map(visibleOwned.map((row) => [row.capsuleKey, row]));
+  const ownedByCapsule = new Map(resources.owned.map((row) => [row.capsuleKey, row]));
 
-  const spent = visibleOwned.reduce((total, row) => total + row.pricePaid, 0);
-  const remaining = resources.startingBudget - spent;
+  // Straight from the API, which sums the settlements table itself.
+  const { spent, remaining } = resources;
   const spentPercent = Math.min(
     100,
     Math.round((spent / Math.max(1, resources.startingBudget)) * 100),
@@ -150,9 +147,7 @@ export function ResourceManager({
               ) : (
                 <p className="mt-0.5 text-xs text-zinc-600">
                   {capsule.status === "LIVE"
-                    ? revealLive
-                      ? "bidding now"
-                      : "in progress — revealed when the round closes"
+                    ? "bidding now"
                     : capsule.status === "CLOSED"
                       ? "round finished — nothing won"
                       : "not yet run"}
@@ -164,9 +159,8 @@ export function ResourceManager({
       </ul>
 
       <p className="mt-3 text-[0.58rem] leading-4 text-zinc-700">
-        {revealLive
-          ? "Updates as each tier settles. Only the team lead can bid; every member can read this."
-          : "Updates when your lead finishes a round. Only the team lead bids; this is your team's ledger."}
+        Updates the moment a tier settles. Only the team lead can bid; every member sees the same
+        ledger.
       </p>
     </section>
   );

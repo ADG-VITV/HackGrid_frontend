@@ -55,6 +55,31 @@ export type TeamResources = {
 
 export type ViewerRole = "LEADER" | "MEMBER";
 
+export type PriceSource = OwnedResource["priceSource"];
+
+export type PodTeamResult = {
+  teamId: number;
+  teamName: string;
+  leadName: string;
+  seat: number;
+  /** Null while that team is still bidding in this round. */
+  result: { tierName: string; tierRank: number; pricePaid: number; priceSource: PriceSource } | null;
+};
+
+export type PodSummary = {
+  capsuleKey: string;
+  capsuleName: string;
+  capsuleStatus: "PENDING" | "LIVE" | "CLOSED";
+  podId: string;
+  podLabel: string;
+  podKind: "MAIN" | "REMAINDER";
+  lotCount: number;
+  settledLots: number;
+  /** True once every tier in the pod has settled — the round is over for this pod. */
+  complete: boolean;
+  teams: PodTeamResult[];
+};
+
 export type CurrentLot = {
   name: string;
   tierRank: number;
@@ -69,6 +94,18 @@ export type BiddingContext = {
   viewerRole: ViewerRole | null;
   /** The tier open in this team's pod right now — what the lead is bidding on. */
   currentLot: CurrentLot | null;
+  /**
+   * What the team has already secured in the live round, straight from the
+   * settlements table — null while it is still bidding. Set the instant the
+   * lot closes, for the lead and every member alike.
+   */
+  currentResult: OwnedResource | null;
+  /**
+   * Everyone in this team's pod and what each of them ended up with — for
+   * the live round, or the one that finished most recently. Read from the
+   * settlements table, so it is still here after the pod room has closed.
+   */
+  podSummary: PodSummary | null;
   capsules: CapsuleContext[];
   resources: TeamResources | null;
 };
@@ -93,6 +130,8 @@ function errorContext(message: string): BiddingContext {
     team: null,
     viewerRole: null,
     currentLot: null,
+    currentResult: null,
+    podSummary: null,
     capsules: capsuleShell(),
     resources: null,
   };
