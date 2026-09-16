@@ -228,9 +228,10 @@ export default function Placeholder() {
                   "A reserve balance is locked during each round: 3,000 in Round 1, 2,000 in Round 2, 1,000 in Round 3, and 0 in Round 4. Only the remaining balance is available for bidding.",
                   "A team can submit a bid only if its Available Balance is sufficient to cover the bid. The Bid option is disabled otherwise.",
                   "After each valid bid, a 13-second countdown starts/resets. If no higher bid is placed before the countdown expires, the current highest bidder wins the resource.",
-                  "Each resource has a maximum auction duration of 7 minutes. At 7 minutes, bidding closes and the current highest bidder wins.",
-                  "If no bid is placed during the entire 7-minute period, the resource is randomly assigned to a team, and that team pays the resource's starting bid.",
+                  "Each resource has a maximum auction duration of 5 minutes. At 5 minutes, bidding closes and the current highest bidder wins — no bid is accepted after that.",
+                  "If no bid is placed during the entire 5-minute period, the resource is randomly assigned to a team, and that team pays the resource's starting bid.",
                   "Once a team wins or is assigned a resource in a round, it is removed from further bidding in that round. The next resource then goes up for auction.",
+                  "Teams left over after the pods of N are drawn form that round's lucky pod. It opens after the main pods finish, with every resource priced at the average the main pods paid for it. Resources come up one at a time for 3 minutes each; a bid only decides who takes one, the price is fixed. A resource nobody bids on is skipped as long as enough remain for every team in the pod — after that it is assigned at random. A lucky pod of a single team simply picks one resource, with no bidding and no clock.",
                 ]}
               />
             </div>

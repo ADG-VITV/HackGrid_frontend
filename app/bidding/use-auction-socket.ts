@@ -6,6 +6,7 @@ import { getPublicBackendUrl } from "@/lib/backend";
 import {
   SOCKET_PATH,
   type BidAck,
+  type ClaimAck,
   type ClientToServerEvents,
   type RoomState,
   type ServerToClientEvents,
@@ -26,6 +27,9 @@ export type BidFeedback = {
   message: string;
   nextMin?: number;
 } | null;
+
+/** The answer to a pick, for the lucky-pod-of-one screen. */
+export type ClaimFeedback = { kind: "taken" | "refused"; lotId: string; message: string } | null;
 
 /** Lifecycle events the page reacts to by re-reading its context. */
 export type LifecycleEvent =
@@ -58,6 +62,7 @@ export function useAuctionSocket(
   const [state, setState] = useState<RoomState | null>(null);
   const [entries, setEntries] = useState<ConsoleEntry[]>([]);
   const [feedback, setFeedback] = useState<BidFeedback>(null);
+  const [claimFeedback, setClaimFeedback] = useState<ClaimFeedback>(null);
   const [lastEvent, setLastEvent] = useState<LifecycleEvent | null>(null);
   /** serverTime minus local clock, so every countdown runs off server truth. */
   const [clockSkew, setClockSkew] = useState(0);
@@ -180,6 +185,7 @@ export function useAuctionSocket(
       setConnection("idle");
       setState(null);
       setFeedback(null);
+      setClaimFeedback(null);
     };
   }, [podId, teamId, email, pushEntry]);
 
@@ -220,6 +226,38 @@ export function useAuctionSocket(
     [pushEntry],
   );
 
+  /**
+   * A lucky pod of one taking a tier at its frozen price. As with a bid, the
+   * server's acknowledgement is the only thing that says it happened.
+   */
+  const claimLot = useCallback(
+    (lotId: string) => {
+      const socket = socketRef.current;
+      if (!socket?.connected) {
+        pushEntry("error", "Not connected — pick was not sent.");
+        return false;
+      }
+
+      socket.emit("CLAIM", { lotId }, (result: ClaimAck) => {
+        if (result.ok) {
+          setClaimFeedback({
+            kind: "taken",
+            lotId: result.lotId,
+            message: `Taken at ${result.pricePaid} credits.`,
+          });
+          pushEntry("success", `Tier taken at ${result.pricePaid} credits.`);
+          return;
+        }
+
+        setClaimFeedback({ kind: "refused", lotId: result.lotId, message: result.reason });
+        pushEntry("error", `Pick refused — ${result.reason}`);
+      });
+
+      return true;
+    },
+    [pushEntry],
+  );
+
   const resync = useCallback(() => {
     socketRef.current?.emit("SYNC");
   }, []);
@@ -234,9 +272,11 @@ export function useAuctionSocket(
     state,
     entries,
     feedback,
+    claimFeedback,
     lastEvent,
     clockSkew,
     placeBid,
+    claimLot,
     resync,
     clearEntries,
     clearFeedback: useCallback(() => setFeedback(null), []),

@@ -13,16 +13,19 @@ const connectionCopy: Record<ConnectionState, { label: string; className: string
 
 /**
  * Identity strip: the room connection, the signed-in team, its pod this
- * round, and what it has left to spend.
+ * round (with a quiet note when it is the round's lucky pod), and what it
+ * has left to spend.
  */
 export function IdentityBar({
   teamLabel,
   podLabel,
+  podKind = null,
   connection,
   balance,
 }: {
   teamLabel: string | null;
   podLabel: string | null;
+  podKind?: "MAIN" | "REMAINDER" | null;
   connection: ConnectionState;
   balance: number | null;
 }) {
@@ -41,6 +44,11 @@ export function IdentityBar({
       {podLabel ? (
         <span className="rounded-md border border-neon/25 bg-neon/[0.06] px-2.5 py-1 font-mono text-[0.65rem] text-neon">
           {podLabel}
+          {podKind === "REMAINDER" ? (
+            <span className="ml-1.5 text-amber-300/80" title="Fewer teams than tiers this round: prices are fixed at the main pods' averages">
+              · lucky pod
+            </span>
+          ) : null}
         </span>
       ) : null}
 

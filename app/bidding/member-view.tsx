@@ -46,6 +46,10 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
   // lists the same teams with the same tiers and prices, so showing both is
   // the same table twice — the results list takes the whole width instead.
   const showPodColumn = Boolean(pod) && !podDone;
+  const luckyPod = pod?.podKind === "REMAINDER";
+  // A lucky pod of one never bids: its lead picks a tier at a fixed price,
+  // so there is no "tier on the block" and no clock to show.
+  const leadPicking = luckyPod && pod !== null && pod.teams.length === 1 && Boolean(live) && !won && !podDone;
   const nextCapsule =
     context.capsules.find((capsule) => capsule.status !== "CLOSED" && capsule.key !== live?.key) ?? null;
   const secondsLeft = secondsUntil(lot?.closesAt ?? null, 0);
@@ -80,6 +84,7 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                   {shownName
                     ? `Round ${shownOrder} · ${shownName}${pod ? ` · ${pod.podLabel}` : ""}`
                     : "Standby"}
+                  {shownName && luckyPod ? <span className="text-amber-300/80"> · lucky pod</span> : null}
                 </Eyebrow>
                 <span
                   className={`flex items-center gap-2 rounded-xl border px-4 py-2 font-mono text-sm font-semibold ${
@@ -100,11 +105,13 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                     ? "ENDED"
                     : won
                       ? "DONE"
-                      : lot
-                        ? lot.closesAt
-                          ? formatTimer(secondsLeft)
-                          : "ON HOLD"
-                        : "—:—"}
+                      : leadPicking
+                        ? "PICK"
+                        : lot
+                          ? lot.closesAt
+                            ? formatTimer(secondsLeft)
+                            : "ON HOLD"
+                          : "—:—"}
                 </span>
               </div>
 
@@ -137,6 +144,19 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                             <span className="text-zinc-200">{team.leadName}</span> is done for this round.
                             It is already deducted from the balance in the ledger. The rest of the pod is
                             still bidding; the next round opens when the organiser starts it.
+                          </p>
+                        </>
+                      ) : leadPicking ? (
+                        <>
+                          <Eyebrow tone="amber">Lucky pod · just your team</Eyebrow>
+                          <h2 className="mt-3 text-2xl font-semibold text-white sm:text-3xl">
+                            Your lead is picking a tier.
+                          </h2>
+                          <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
+                            Your team is the only one in {pod?.podLabel}, so there is no bidding and no
+                            clock. Every tier is on the table at the price the main pods averaged for it;
+                            the one <span className="text-zinc-200">{team.leadName}</span> takes shows
+                            here and in the ledger the moment it is done.
                           </p>
                         </>
                       ) : lot ? (

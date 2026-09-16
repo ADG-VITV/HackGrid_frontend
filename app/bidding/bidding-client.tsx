@@ -116,11 +116,8 @@ export function BiddingClient() {
   // The hub seats the lead's email only.
   const socketEmail = isMember ? null : identity;
 
-  const { connection, state: room, feedback, clockSkew, placeBid, lastEvent } = useAuctionSocket(
-    activePodId,
-    teamId,
-    socketEmail,
-  );
+  const { connection, state: room, feedback, claimFeedback, clockSkew, placeBid, claimLot, lastEvent } =
+    useAuctionSocket(activePodId, teamId, socketEmail);
 
   // A round ending, or the next one opening, changes which room this client
   // belongs to — so re-read the context whenever the server says so.
@@ -220,6 +217,7 @@ export function BiddingClient() {
         <IdentityBar
           teamLabel={identityLabel}
           podLabel={room?.pod.label ?? liveCapsule?.podLabel ?? context.podSummary?.podLabel ?? null}
+          podKind={room?.pod.kind ?? liveCapsule?.podKind ?? context.podSummary?.podKind ?? null}
           connection={connection}
           balance={context.resources?.remaining ?? null}
         />
@@ -352,9 +350,11 @@ export function BiddingClient() {
                               connection={connection}
                               clockSkew={clockSkew}
                               feedback={feedback}
+                              claimFeedback={claimFeedback}
                               notStartedMessage={workspaceMessage()}
                               nextCapsuleName={nextCapsule?.name ?? null}
                               onBid={placeBid}
+                              onClaim={claimLot}
                             />
                           ) : isOpen ? (
                             <FinishedRound

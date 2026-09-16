@@ -1,4 +1,4 @@
-import type { BidRejectionCode } from "@/lib/auction-rules.mjs";
+import type { BidRejectionCode, ClaimRejectionCode } from "@/lib/auction-rules.mjs";
 
 /**
  * The Socket.IO contract between the browser and the auction backend.
@@ -60,9 +60,17 @@ export type RoomState = {
     capsuleKey: string;
     capsuleName: string;
     podSize: number;
-    /** Teams that must be connected before the clock starts (podSize - 1). */
+    /** Teams that must be connected before the clock starts (every seat). */
     quorum: number;
     onlineCount: number;
+    /**
+     * How this pod gets its tiers. `BID` is the auction. `PICK` is a
+     * remainder pod of exactly one team: no clock, no bids — every tier is
+     * open at its frozen price and the team takes one with CLAIM.
+     */
+    mode: "BID" | "PICK";
+    /** How long a tier in this pod stays open with nobody bidding. */
+    windowSeconds: number;
   };
   members: PodMemberView[];
   you: {
@@ -88,6 +96,11 @@ export type BidAck =
       reason: string;
       nextMin?: number;
     };
+
+/** What the server answers a CLAIM with (remainder pod of one only). */
+export type ClaimAck =
+  | { ok: true; lotId: string; pricePaid: number }
+  | { ok: false; lotId: string; code: ClaimRejectionCode | "UNKNOWN"; reason: string };
 
 /** Events the server sends down. */
 export type ServerToClientEvents = {
@@ -115,9 +128,11 @@ export type ServerToClientEvents = {
   ROOM_ERROR: (payload: { message: string }) => void;
 };
 
-/** Events the browser sends up. BID carries an acknowledgement. */
+/** Events the browser sends up. BID and CLAIM carry an acknowledgement. */
 export type ClientToServerEvents = {
   BID: (payload: { lotId: string; amount: number }, ack: (result: BidAck) => void) => void;
+  /** Take a tier at its frozen price — only when `pod.mode` is `PICK`. */
+  CLAIM: (payload: { lotId: string }, ack: (result: ClaimAck) => void) => void;
   SYNC: () => void;
 };
 

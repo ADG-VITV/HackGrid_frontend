@@ -5,7 +5,13 @@ import { MinusIcon, PlusIcon } from "./auction-icon";
 import { compactIncrement, incrementLabel } from "./auction-data";
 import { Credits } from "./credits";
 import { RoundComplete, rowsFromRoom } from "./round-complete";
-import { secondsUntil, type BidFeedback, type ConnectionState } from "./use-auction-socket";
+import {
+  secondsUntil,
+  type BidFeedback,
+  type ClaimFeedback,
+  type ConnectionState,
+} from "./use-auction-socket";
+import { canSkipUnbidLot } from "@/lib/auction-rules.mjs";
 import type { LotView, RoomState } from "@/lib/socket-events";
 
 function formatTimer(seconds: number | null) {
@@ -21,10 +27,14 @@ type WorkspaceProps = {
   connection: ConnectionState;
   clockSkew: number;
   feedback: BidFeedback;
+  /** The answer to a pick, in a lucky pod of one. */
+  claimFeedback: ClaimFeedback;
   notStartedMessage: string | null;
   /** What the organiser opens after this round; null after the last. */
   nextCapsuleName: string | null;
   onBid: (lotId: string, amount: number) => void;
+  /** Take a tier at its frozen price — lucky pod of one only. */
+  onClaim: (lotId: string) => void;
 };
 
 export function ExpandedWorkspace({
@@ -33,9 +43,11 @@ export function ExpandedWorkspace({
   connection,
   clockSkew,
   feedback,
+  claimFeedback,
   notStartedMessage,
   nextCapsuleName,
   onBid,
+  onClaim,
 }: WorkspaceProps) {
   const activeLot = room?.lots.find((lot) => lot.status === "OPEN") ?? null;
 
@@ -81,13 +93,26 @@ export function ExpandedWorkspace({
     ? (room.lots.find((lot) => lot.id === room.you.wonLotId) ?? null)
     : null;
 
+  const isRemainder = room.pod.kind === "REMAINDER";
+
   // The remainder pod only opens once every main pod has finished — it is
-  // event-driven, not timed. Until then every one of its lots is still PENDING.
+  // event-driven, not timed. Until then every one of its lots is still
+  // PENDING; the moment the first one opens (or settles) it is under way.
   const remainderWaiting =
-    room.pod.kind === "REMAINDER" &&
-    !activeLot &&
-    !yourResult &&
-    room.lots.some((lot) => lot.status === "PENDING");
+    isRemainder && room.lots.length > 0 && room.lots.every((lot) => lot.status === "PENDING");
+
+  // A lucky pod of one: nothing to bid against, so no clock — every tier is
+  // open at its frozen price and the team simply takes one.
+  const pickMode = room.pod.mode === "PICK";
+  const picking = pickMode && !yourResult && room.lots.some((lot) => lot.status === "OPEN");
+
+  // Remainder pods bid tier by tier like a main pod, but an unbid tier is
+  // skipped rather than assigned while the tiers still to come can cover
+  // every team that has none (the same rule the server applies).
+  const tiersLeftAfter = room.lots.filter((lot) => lot.status === "PENDING").length;
+  const teamsWithoutTier = room.members.length - room.lots.filter((lot) => lot.result).length;
+  const unbidWillSkip =
+    isRemainder && canSkipUnbidLot({ lotsLeftAfter: tiersLeftAfter, unassignedTeams: teamsWithoutTier });
 
   // Every tier in the pod has settled: the round is over for this pod. The
   // server pushes a final ROOM_STATE for exactly this moment, so the last
@@ -134,11 +159,13 @@ export function ExpandedWorkspace({
             ? "DONE"
             : remainderWaiting
               ? "WAITING"
-              : !activeLot
-                ? "CLOSED"
-                : activeLot.awaitingQuorum
-                  ? "ON HOLD"
-                  : formatTimer(secondsLeft)}
+              : picking
+                ? "PICK"
+                : !activeLot
+                  ? "CLOSED"
+                  : activeLot.awaitingQuorum
+                    ? "ON HOLD"
+                    : formatTimer(secondsLeft)}
         </div>
       }
     >
@@ -154,12 +181,26 @@ export function ExpandedWorkspace({
               capsuleClosed={false}
               nextCapsuleName={nextCapsuleName}
             />
+          ) : picking ? (
+            <PickTier room={room} feedback={claimFeedback} onClaim={onClaim} />
           ) : activeLot ? (
             <>
               <p className="text-sm text-zinc-400">
                 <span className="text-zinc-500">Now bidding:</span>{" "}
                 <span className="text-zinc-100">{activeLot.name}</span>
               </p>
+
+              {isRemainder ? (
+                <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.06] px-3 py-2 text-xs leading-5 text-amber-200/90">
+                  <span className="font-semibold">Lucky pod · fixed price.</span> Whoever holds the top
+                  bid when the clock runs out pays{" "}
+                  <span className="font-mono font-semibold"><Credits value={activeLot.startingBid} /></span>
+                  , not their bid.{" "}
+                  {unbidWillSkip
+                    ? "If nobody bids, this tier is skipped and the next comes up."
+                    : `If nobody bids, it goes to one of the ${teamsWithoutTier} team${teamsWithoutTier === 1 ? "" : "s"} still without a tier, at random.`}
+                </p>
+              ) : null}
 
               <p className="mt-4 text-[0.65rem] font-semibold tracking-[0.18em] text-zinc-500 uppercase">
                 {activeLot.top ? "Top bid" : "Starting bid"}
@@ -313,7 +354,9 @@ export function ExpandedWorkspace({
           {podComplete ? null : (
             <div className="rounded-[20px] border border-neon/20 bg-zinc-950/60 p-4">
               <h4 className="text-[0.65rem] font-semibold tracking-[0.16em] text-zinc-500 uppercase">
-                {room.pod.label} · {room.pod.onlineCount} of {room.pod.podSize} online
+                {room.pod.label}
+                {isRemainder ? <span className="text-amber-300/80"> · lucky pod</span> : null} ·{" "}
+                {room.pod.onlineCount} of {room.pod.podSize} online
               </h4>
               <ul className="mt-3 space-y-1.5">
                 {room.members.map((member) => (
@@ -373,15 +416,22 @@ function RemainderWaiting({ room }: { room: RoomState }) {
       <div className="mt-5 max-w-md rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
         <strong className="font-semibold">The main pods are bidding right now.</strong>
         <span className="mt-1 block text-zinc-300">
-          When the last of them settles, every tier opens for you at once at a fixed price — the
-          average each tier sold for across the main pods. You then pick the one you want; you don&apos;t
-          bid the price up.
+          {room.pod.mode === "PICK"
+            ? "When the last of them settles, every tier opens for you at a fixed price — the average each sold for across the main pods. You are the only team here, so there is no bidding and no clock: you simply pick one."
+            : "When the last of them settles, the tiers come up one at a time at a fixed price — the average each sold for across the main pods. A bid only decides who takes a tier; the price does not move."}
         </span>
       </div>
 
       <ul className="mt-5 max-w-md space-y-1.5 text-xs text-zinc-500">
         <li>· There is no clock for you until then — it is not tied to how long the main pods take.</li>
-        <li>· Only if two of you want the same tier does a short bid decide who gets it. The price stays fixed.</li>
+        {room.pod.mode === "PICK" ? (
+          <li>· Take the tier you want and you are done for the round.</li>
+        ) : (
+          <>
+            <li>· A tier nobody bids on is skipped — as long as enough tiers remain for every team here to get one. After that an unbid tier is handed out at random.</li>
+            <li>· Once every team has a tier, whatever is left is withdrawn.</li>
+          </>
+        )}
         <li>· Keep this page open; it will change on its own the moment your pod opens.</li>
       </ul>
 
@@ -396,6 +446,103 @@ function RemainderWaiting({ room }: { room: RoomState }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * A lucky pod of one. There is nobody to outbid, so there is no bid box and
+ * no clock: every tier is on the table at the price the main pods averaged
+ * for it, and the team takes one. The server settles it on the spot and the
+ * round is over for this pod.
+ */
+function PickTier({
+  room,
+  feedback,
+  onClaim,
+}: {
+  room: RoomState;
+  feedback: ClaimFeedback;
+  onClaim: (lotId: string) => void;
+}) {
+  const open = room.lots.filter((lot) => lot.status === "OPEN");
+  // Which tier was just sent, so every button greys out until the server
+  // answers — a second click must not race the first. Derived, not synced:
+  // the pick stops being "in flight" the moment the server acknowledges it
+  // (new feedback) or repaints the room (new serverTime).
+  const [sent, setSent] = useState<{ lotId: string; at: string; feedback: ClaimFeedback } | null>(null);
+  const inFlight = sent && sent.at === room.serverTime && sent.feedback === feedback ? sent.lotId : null;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <p className="text-[0.65rem] font-semibold tracking-[0.18em] text-amber-400 uppercase">
+        {room.pod.label} · lucky pod · just you
+      </p>
+      <h4 className="mt-3 text-2xl font-semibold text-white lg:text-3xl">Pick your tier.</h4>
+      <p className="mt-3 max-w-md text-sm leading-6 text-zinc-500">
+        Your team is the only one in this pod, so there is nothing to bid for and no clock. Each tier
+        is at the price the main pods averaged for it. Take one and you are done for this round.
+      </p>
+
+      {feedback?.kind === "refused" ? (
+        <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          {feedback.message}
+        </p>
+      ) : null}
+
+      <ul className="mt-5 space-y-2">
+        {open.map((lot) => {
+          const affordable = lot.startingBid <= room.you.spendingCap;
+          const busy = inFlight !== null;
+          return (
+            <li
+              key={lot.id}
+              className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5"
+            >
+              <span className="grid size-6 shrink-0 place-items-center rounded-md bg-zinc-900 font-mono text-[0.6rem] text-zinc-500">
+                {lot.tierRank}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-zinc-100">{lot.name}</span>
+                <span className="block font-mono text-[0.6rem] text-zinc-600">
+                  list <Credits value={lot.listedPrice} />
+                </span>
+              </span>
+              <span className="shrink-0 font-mono text-base font-semibold text-neon">
+                <Credits value={lot.startingBid} />
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSent({ lotId: lot.id, at: room.serverTime, feedback });
+                  onClaim(lot.id);
+                }}
+                disabled={!affordable || busy}
+                className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                  affordable && !busy
+                    ? "border-neon/60 bg-neon/10 text-neon hover:bg-neon/20"
+                    : "cursor-not-allowed border-zinc-700 bg-zinc-900 text-zinc-500"
+                }`}
+              >
+                {inFlight === lot.id ? "Taking…" : affordable ? "Take it" : "Over bid cap"}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="mt-3 font-mono text-[0.65rem] text-zinc-500">
+        Bid cap this round{" "}
+        <span className="font-semibold text-zinc-300"><Credits value={room.you.spendingCap} /></span>
+        {room.you.reserve > 0 ? (
+          <>
+            {" "}· <Credits value={room.you.reserve} /> of your <Credits value={room.you.remainingBalance} />{" "}
+            is reserved for the capsules still to come
+          </>
+        ) : (
+          <> · last capsule, nothing held back</>
+        )}
+      </p>
     </div>
   );
 }
@@ -483,6 +630,8 @@ function LotRow({ lot, youTeamId }: { lot: LotView; youTeamId: number }) {
           <span className={wonByYou ? "font-semibold text-neon" : "text-zinc-400"}>
             {wonByYou ? "Won by you" : `Won by ${lot.result.teamName}`} · <Credits value={lot.result.pricePaid} />
           </span>
+        ) : lot.status === "CLOSED" ? (
+          <span className="text-zinc-600">Skipped</span>
         ) : lot.status === "OPEN" ? (
           <span className="font-semibold text-neon">Live · {lot.bidCount} bid(s)</span>
         ) : lot.isAutoAssigned ? (
