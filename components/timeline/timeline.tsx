@@ -30,11 +30,9 @@ interface BaseNode {
   y: number;
 }
 
-// Timeline nodes mirror eventsData order. The 09:00 AM auction node is
-// placed between the kickoff node and the existing 11:00 AM node.
+// Added a new node at {x: 550, y: 320} for card-8 so card-9 can be the center terminal
 const baseNodes: BaseNode[] = [
   { x: 100, y: 150 },
-  { x: 250, y: 80 },
   { x: 400, y: 120 },
   { x: 700, y: 250 },
   { x: 680, y: 500 },
@@ -42,42 +40,28 @@ const baseNodes: BaseNode[] = [
   { x: 200, y: 600 },
   { x: 120, y: 350 },
   { x: 330, y: 250 },
-  { x: 550, y: 320 },
+  { x: 550, y: 320 }, 
   { x: 400, y: 400 },
 ];
 
-const dayTwoStartNodeIndex = 7;
+// Synced times to elapsed minutes: 
+// 08:00 AM (480), 11:00 AM (660), 02:30 PM (870), 07:00 PM (1140), 12:00 AM (1440),
+// 04:00 AM (1680), 05:30 AM (1770), 12:30 PM (2190), 02:30 PM (2310), 03:45 PM (2385)
+const nodeTimes = [480, 660, 870, 1140, 1440, 1680, 1770, 2190, 2310, 2385];
 const cipherLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*";
-
-function parseEventTime(time: string) {
-  const [clock, period] = time.split(" ");
-  const [hours, minutes] = clock.split(":").map(Number);
-  const normalizedHours = (hours % 12) + (period === "PM" ? 12 : 0);
-  return normalizedHours * 60 + minutes;
-}
 
 const eventsData = [
   { id: "card-0", time: "08:00 AM", seq: "SEQ_01", title: "Kickoff & Welcome", desc: "Registration, check-in, and opening remarks from our anchors and board members. Let the hackathon begin!", style: { left: "100px", top: "150px" }, push: "push-down" },
-  { id: "card-1", time: "09:00 AM", seq: "SEQ_02", title: "Auction Begins", desc: "First Auction starts now!", style: { left: "250px", top: "80px" }, push: "push-down" },
-  { id: "card-2", time: "11:00 AM", seq: "SEQ_03", title: "Lunch Break", desc: "A midday pause on Day 1 before the final stretch begins.", style: { left: "400px", top: "120px" }, push: "push-down" },
-  { id: "card-3", time: "02:30 PM", seq: "SEQ_04", title: "Review Sequence 1", desc: "Teams present their initial problem approach and solution strategy to mentors.", style: { left: "700px", top: "250px" }, push: "push-left" },
-  { id: "card-4", time: "07:00 PM", seq: "SEQ_05", title: "Dinner Break", desc: "Time to unwind, eat, and get ready for the night of building ahead.", style: { left: "680px", top: "500px" }, push: "push-left" },
-  { id: "card-5", time: "11:30 PM", seq: "SEQ_06", title: "Review Sequence 2", desc: "A deeper look into each team's progress, prototypes, and problem-solving direction.", style: { left: "450px", top: "700px" }, push: "push-up" },
-  { id: "card-6", time: "05:00 AM", seq: "SEQ_07", title: "Review & Shortlisting", desc: "Final evaluation round of Day 1 to shortlist teams advancing to Day 2.", style: { left: "200px", top: "600px" }, push: "push-right" },
-  { id: "card-7", time: "06:00 AM", seq: "SEQ_08", title: "Day 1 Wrap-Up", desc: "Day 1 concludes. Teams get a well-deserved break to rest and recharge overnight.", style: { left: "120px", top: "350px" }, push: "push-right" },
-  { id: "card-8", time: "12:30 PM", seq: "SEQ_09", title: "Refuel Break", desc: "A short lunch break to recharge before diving into the first round of building.", style: { left: "330px", top: "250px" }, push: "push-left" },
-  { id: "card-9", time: "02:30 PM", seq: "SEQ_10", title: "Final Showdown", desc: "Shortlisted teams present their final solutions for judgement by the panel.", style: { left: "550px", top: "320px" }, push: "push-left" },
-  { id: "card-10", time: "03:45 PM", seq: "SEQ_11", title: "Grand Finale", desc: "Closing speech, winner announcement, and closing ceremony to wrap up the hackathon.", style: { left: "400px", top: "400px" }, push: "push-center" },
+  { id: "card-1", time: "11:00 AM", seq: "SEQ_02", title: "Lunch Break", desc: "A midday pause on Day 1 before the final stretch begins.", style: { left: "400px", top: "120px" }, push: "push-down" },
+  { id: "card-2", time: "02:30 PM", seq: "SEQ_03", title: "Review Sequence 1", desc: "Teams present their initial problem approach and solution strategy to mentors.", style: { left: "700px", top: "250px" }, push: "push-left" },
+  { id: "card-3", time: "07:00 PM", seq: "SEQ_04", title: "Dinner Break", desc: "Time to unwind, eat, and get ready for the night of building ahead.", style: { left: "680px", top: "500px" }, push: "push-left" },
+  { id: "card-4", time: "12:00 AM", seq: "SEQ_05", title: "Review Sequence 2", desc: "A deeper look into each team's progress, prototypes, and problem-solving direction.", style: { left: "450px", top: "700px" }, push: "push-up" },
+  { id: "card-5", time: "04:00 AM", seq: "SEQ_06", title: "Review & Shortlisting", desc: "Final evaluation round of Day 1 to shortlist teams advancing to Day 2.", style: { left: "200px", top: "600px" }, push: "push-right" },
+  { id: "card-6", time: "05:30 AM", seq: "SEQ_07", title: "Day 1 Wrap-Up", desc: "Day 1 concludes. Teams get a well-deserved break to rest and recharge overnight.", style: { left: "120px", top: "350px" }, push: "push-right" },
+  { id: "card-7", time: "12:30 PM", seq: "SEQ_08", title: "Refuel Break", desc: "A short lunch break to recharge before diving into the first round of building.", style: { left: "330px", top: "250px" }, push: "push-left" },
+  { id: "card-8", time: "02:30 PM", seq: "SEQ_09", title: "Final Showdown", desc: "Shortlisted teams present their final solutions for judgement by the panel.", style: { left: "550px", top: "320px" }, push: "push-left" },
+  { id: "card-9", time: "03:45 PM", seq: "SEQ_10", title: "Grand Finale", desc: "Closing speech, winner announcement, and closing ceremony to wrap up the hackathon.", style: { left: "400px", top: "400px" }, push: "push-center" },
 ];
-
-const nodeTimes = eventsData.reduce<number[]>((times, event) => {
-  let minutes = parseEventTime(event.time);
-  if (times.length > 0) {
-    while (minutes < times[times.length - 1]) minutes += 24 * 60;
-  }
-  times.push(minutes);
-  return times;
-}, []);
 
 export default function HackGridTimeline() {
   /* false during SSR/hydration, true once on the client — without a
@@ -92,7 +76,6 @@ export default function HackGridTimeline() {
   const clockHourRef = useRef<SVGGElement>(null);
   const clockMinRef = useRef<SVGGElement>(null);
   const clockDigitalSvgRef = useRef<SVGTextElement>(null);
-  const dayLabelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isMounted) return;
@@ -146,9 +129,9 @@ export default function HackGridTimeline() {
     let currentSearchStart = 0;
 
     nodeInstances.forEach((node, index) => {
-      // The final terminal node is a larger <g> without x/y attributes.
-      const nx = index === 10 ? 400 : parseFloat(node.getAttribute("x") || "400");
-      const ny = index === 10 ? 400 : parseFloat(node.getAttribute("y") || "400");
+      // Adjusted hardcoded index from 8 to 9 for the terminal node
+      const nx = index === 9 ? 400 : parseFloat(node.getAttribute("x") || "400");
+      const ny = index === 9 ? 400 : parseFloat(node.getAttribute("y") || "400");
 
       let minDst = Infinity;
       let closestLen = currentSearchStart;
@@ -261,7 +244,7 @@ export default function HackGridTimeline() {
       trigger: containerRef.current,
       start: "top top",
       end: "bottom bottom",
-      scrub: 2,
+      scrub: 1.2,
       onUpdate: (self) => {
         const magneticProgress = getMagneticProgress(self.progress);
 
@@ -304,9 +287,6 @@ export default function HackGridTimeline() {
         if (clockMinRef.current) gsap.set(clockMinRef.current, { rotation: minuteAngle, svgOrigin: "180 180" });
         if (clockHourRef.current) gsap.set(clockHourRef.current, { rotation: hourAngle, svgOrigin: "180 180" });
         if (clockDigitalSvgRef.current) clockDigitalSvgRef.current.textContent = formatTime(currentTimeInMinutes);
-        if (dayLabelRef.current) {
-          dayLabelRef.current.textContent = lastNodeIndex >= dayTwoStartNodeIndex ? "Day 2" : "Day 1";
-        }
 
         let activeIndex = -1;
         for (let i = 0; i < nodeProgresses.length; i++) {
@@ -317,7 +297,8 @@ export default function HackGridTimeline() {
           if (activeIndex !== -1) {
             const nodeX = nodeInstances[activeIndex]?.getAttribute("x") || 400;
             const nodeY = nodeInstances[activeIndex]?.getAttribute("y") || 400;
-            if (activeIndex !== 10) dataPacket.setAttribute("transform", `translate(${nodeX}, ${nodeY}) rotate(${angle})`);
+            // Adjusted hardcoded index from 8 to 9
+            if (activeIndex !== 9) dataPacket.setAttribute("transform", `translate(${nodeX}, ${nodeY}) rotate(${angle})`);
           } else {
             dataPacket.setAttribute("transform", `translate(${currentPoint.x}, ${currentPoint.y}) rotate(${angle})`);
           }
@@ -329,9 +310,9 @@ export default function HackGridTimeline() {
         eventBlocks.forEach((block, index) => {
           const node = nodeInstances[index];
           if (!node) return;
-          // The final terminal node is a larger <g> without x/y attributes.
-          const nx = index === 10 ? 400 : parseFloat(node.getAttribute("x") || "400");
-          const ny = index === 10 ? 400 : parseFloat(node.getAttribute("y") || "400");
+          // Adjusted hardcoded index from 8 to 9
+          const nx = index === 9 ? 400 : parseFloat(node.getAttribute("x") || "400");
+          const ny = index === 9 ? 400 : parseFloat(node.getAttribute("y") || "400");
 
           const distToBlob = Math.hypot(currentPoint.x - nx, currentPoint.y - ny);
 
@@ -444,11 +425,11 @@ export default function HackGridTimeline() {
         #dataPacket.snapped .arrow-tip-node { fill: #ffffff; }
         #dataPacket.snapped .arrow-arrival-reticle { opacity: 0.75; transform: scale(1.6); }
 
-        .event-block { position: absolute; width: 360px; opacity: 0; visibility: hidden; transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 1, 0.3, 1), visibility 0s 0.5s; pointer-events: none; will-change: transform, opacity; }
+        .event-block { position: absolute; width: 280px; opacity: 0; visibility: hidden; transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 1, 0.3, 1), visibility 0s 0.5s; pointer-events: none; will-change: transform, opacity; }
         .event-block.revealed { opacity: 1; visibility: visible; border-color: rgba(66, 255, 90, 0.4); box-shadow: 0 15px 35px rgba(0,0,0,0.6); transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.2, 1, 0.3, 1), visibility 0s 0s; }
         .push-down { transform: translate(-50%, -20px); margin-top: 30px; text-align: center; }
         .push-down.revealed { transform: translate(-50%, 0); }
-        .push-left { transform: translate(20px, -50%); margin-left: -390px; text-align: right; }
+        .push-left { transform: translate(20px, -50%); margin-left: -310px; text-align: right; }
         .push-left.revealed { transform: translate(0, -50%); }
         .push-right { transform: translate(-20px, -50%); margin-left: 30px; text-align: left; }
         .push-right.revealed { transform: translate(0, -50%); }
@@ -466,13 +447,6 @@ export default function HackGridTimeline() {
           <h1 className={`${geistMono.className} text-white text-[3.2rem] tracking-[10px] uppercase drop-shadow-[0_0_20px_rgba(66,255,90,0.5)] m-0 font-bold`}>
             Timeline
           </h1>
-          <div
-            ref={dayLabelRef}
-            className={`${geistMono.className} text-neon text-[0.9rem] tracking-[0.35em] uppercase text-glow-neon`}
-            aria-live="polite"
-          >
-            Day 1
-          </div>
           <svg className="w-[360px] h-[360px] block" viewBox="0 0 360 360">
             <circle cx="180" cy="180" r="160" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1.5" strokeDasharray="2 6" />
             <circle className="spin-slow" cx="180" cy="180" r="140" fill="none" stroke="rgba(127,168,146,0.3)" strokeWidth="1" strokeDasharray="20 40 4 10" />
@@ -509,6 +483,7 @@ export default function HackGridTimeline() {
 
         {/* TIMELINE WRAPPER */}
         <div className="flex-1 max-w-[800px] h-[800px] relative scale-[0.85]">
+          
           {/* EVENT CARDS */}
           {eventsData.map((card) => (
             <div
@@ -574,18 +549,17 @@ export default function HackGridTimeline() {
             <g ref={burstLayerRef} className="pointer-events-none" />
 
             <use href="#advanced-nodule" x="100" y="150" className="node-instance" id="node-0" />
-            <use href="#advanced-nodule" x="250" y="80" className="node-instance" id="node-1" />
-            <use href="#advanced-nodule" x="400" y="120" className="node-instance" id="node-2" />
-            <use href="#advanced-nodule" x="700" y="250" className="node-instance" id="node-3" />
-            <use href="#advanced-nodule" x="680" y="500" className="node-instance" id="node-4" />
-            <use href="#advanced-nodule" x="450" y="700" className="node-instance" id="node-5" />
-            <use href="#advanced-nodule" x="200" y="600" className="node-instance" id="node-6" />
-            <use href="#advanced-nodule" x="120" y="350" className="node-instance" id="node-7" />
-            <use href="#advanced-nodule" x="330" y="250" className="node-instance" id="node-8" />
-            <use href="#advanced-nodule" x="550" y="320" className="node-instance" id="node-9" />
+            <use href="#advanced-nodule" x="400" y="120" className="node-instance" id="node-1" />
+            <use href="#advanced-nodule" x="700" y="250" className="node-instance" id="node-2" />
+            <use href="#advanced-nodule" x="680" y="500" className="node-instance" id="node-3" />
+            <use href="#advanced-nodule" x="450" y="700" className="node-instance" id="node-4" />
+            <use href="#advanced-nodule" x="200" y="600" className="node-instance" id="node-5" />
+            <use href="#advanced-nodule" x="120" y="350" className="node-instance" id="node-6" />
+            <use href="#advanced-nodule" x="330" y="250" className="node-instance" id="node-7" />
+            <use href="#advanced-nodule" x="550" y="320" className="node-instance" id="node-8" />
 
-            {/* Larger terminal node for the final event */}
-            <g className="node-instance" id="node-10" transform="translate(400, 400)">
+            {/* Changed from node-8 to node-9 */}
+            <g className="node-instance" id="node-9" transform="translate(400, 400)">
               <path
                 className="nodule-crosshair"
                 d="
