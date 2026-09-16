@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { GeistPixelSquare } from "geist/font/pixel";
+import { Analytics } from "@vercel/analytics/next";
 import ClientLayout from "./ClientLayout";
 import StyledJsxRegistry from "./styled-jsx-registry";
 import { AuthProvider } from "@/context/AuthContext";
@@ -44,6 +45,8 @@ export default function RootLayout({
             <ClientLayout>{children}</ClientLayout>
           </AuthProvider>
         </StyledJsxRegistry>
+        {/* Vercel Web Analytics: page views + visitors. No-op outside Vercel. */}
+        <Analytics />
       </body>
     </html>
   );
