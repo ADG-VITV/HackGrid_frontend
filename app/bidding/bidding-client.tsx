@@ -190,7 +190,10 @@ export function BiddingClient() {
         : "The auction has not started yet. This page will come alive when the first round opens.";
     }
     if (!liveCapsule.podId) {
-      return `${liveCapsule.name} is running, but your team was not placed in a pod for it.`;
+      // No seat this round: never drawn into a pod, or taken out of one by
+      // the organiser. They can seat the team in a lucky pod that has not
+      // started; the page polls, so it changes on its own if they do.
+      return `${liveCapsule.name} is running, but your team has no pod in it right now. If the organiser seats you in a lucky pod, this page picks it up on its own — keep it open.`;
     }
     return null;
   }

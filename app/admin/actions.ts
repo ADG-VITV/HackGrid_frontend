@@ -168,6 +168,11 @@ export async function resetPodAction(capsuleKey: string, podId: string): Promise
   return mutate(`${podPath(capsuleKey, podId)}/reset`);
 }
 
+/** Open a held lucky pod (one that was reset, or created while the round was live). */
+export async function startPodAction(capsuleKey: string, podId: string): Promise<AdminReport> {
+  return mutate(`${podPath(capsuleKey, podId)}/start`);
+}
+
 export async function createManualPodAction(
   capsuleKey: string,
   podNumber: number,

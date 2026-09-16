@@ -231,6 +231,7 @@ console: CORS error on `/socket.io/?EIO=4…`).
 | | `resetSubCapsuleAction(key, tier)` | `POST /api/admin/capsules/:key/sub-capsules/:tier/reset` |
 | | `createManualPodAction(key, n, remainder)` | `POST /api/admin/capsules/:key/pods` |
 | | `resetPodAction(key, podId)` | `POST /api/admin/capsules/:key/pods/:podId/reset` |
+| | `startPodAction(key, podId)` — open a held lucky pod | `POST /api/admin/capsules/:key/pods/:podId/start` |
 | | `addTeamToPodAction(key, podId, teamId)` | `POST /api/admin/capsules/:key/pods/:podId/teams` |
 | | `removeTeamFromPodAction(key, podId, teamId)` | `DELETE /api/admin/capsules/:key/pods/:podId/teams/:teamId` |
 | | `setPodRemainderFlagAction(key, podId, flag)` | `PATCH /api/admin/capsules/:key/pods/:podId/remainder` |
@@ -247,6 +248,15 @@ console: CORS error on `/socket.io/?EIO=4…`).
 | `/judge/evaluations` | `getJudgeResultsAction(idToken, code)` — refused without the popup | `GET /api/judge/results` |
 
 All admin mutations send `x-admin-key` when `ADMIN_API_KEY` is set.
+
+In a **live** round the admin page's pod cards gain roster tools for an
+absent team: **Remove** on a team row (the pod must have sold nothing; a main
+pod becomes a lucky pod, a held lucky pod shrinks), an **Unseated this
+round** panel listing teams with no pod, and on every held lucky pod a
+**Seat** picker plus **Start lucky pod**. These reuse `addTeamToPodAction` /
+`removeTeamFromPodAction` — the backend decides what a live round allows —
+and the new `startPodAction`. See the backend README, *Releasing an absent
+team*.
 
 The judge actions forward the browser's **Firebase ID token** as
 `Authorization: Bearer …`; the backend verifies it (it needs
