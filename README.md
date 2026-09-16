@@ -222,7 +222,7 @@ console: CORS error on `/socket.io/?EIO=4…`).
 | | `listUsersAction()` — dev-only "act as" roster | `GET /api/teams/users` |
 | | team dashboard: `getBiddingContextAction(email)` | `GET /api/auction/context/:teamIdOrEmail` |
 | `/bidding` | `getBiddingContextAction(email)` on load and after every lifecycle event | `GET /api/auction/context/:teamIdOrEmail` |
-| | Socket.IO room (lead only): `ROOM_STATE`, `BID` → ack, `SYNC`, `OUTBID`, `LOT_*`, `CAPSULE_*`, `EVENT_COMPLETE` | `wss://…/socket.io` |
+| | Socket.IO room (lead only): `ROOM_STATE`, `BID` → ack, `CLAIM` → ack (lucky pod of one, `pod.mode === "PICK"`), `SYNC`, `OUTBID`, `LOT_*`, `CAPSULE_*`, `EVENT_COMPLETE` | `wss://…/socket.io` |
 | `/admin` | `getAdminContextAction()` on load and every 10 s | `GET /api/admin/context` |
 | | `startEventAdminAction()` | `POST /api/admin/event/start` |
 | | `resetEventAdminAction()` | `POST /api/admin/event/reset` |
@@ -374,6 +374,14 @@ They must stay identical. If a price, tier name, timing or rejection code
 changes on the backend, copy the file here too. The Socket.IO payload types
 in `lib/socket-events.ts` likewise mirror what `backend/server.mjs` and
 `backend/lib/auction-hub.mjs` emit.
+
+The bidding page reads three things from the rules copy: the timings it
+prints (5 min per main-pod tier, 3 min per lucky-pod tier, 13 s anti-snipe),
+`canSkipUnbidLot` (so a lucky pod can say whether an unbid tier will be
+skipped or assigned), and the rejection codes. `ROOM_STATE.pod.mode` tells
+the room whether it bids (`BID`) or, as a lucky pod of one, picks a tier at
+its frozen price (`PICK` → the `CLAIM` event); `pod.kind === "REMAINDER"` is
+what the quiet "lucky pod" tag on the identity bar keys off.
 
 ---
 
