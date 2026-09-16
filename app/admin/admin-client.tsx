@@ -13,6 +13,7 @@ import {
   resetSubCapsuleAction,
   setPodRemainderFlagAction,
   startEventAdminAction,
+  startPodAction,
   startRoundAction,
   type AdminContext,
   type AdminReport,
@@ -41,6 +42,50 @@ function podStatusLabel(status: string) {
   return status === "WAITING_FOR_TEAMS" ? "WAITING FOR TEAMS" : status;
 }
 
+type AdminCapsule = AdminContext["capsules"][number];
+
+/**
+ * The "free" space for the live round: teams with no seat in any of its pods
+ * — either never drawn into one, or taken out of one by the organiser because
+ * their lead was absent. They can be seated in a lucky pod that has not
+ * started (the picker sits on that pod). If none is left, they sit this
+ * round out and join the next as normal.
+ */
+function UnseatedPanel({ teams, capsule }: { teams: AdminContext["teams"]; capsule: AdminCapsule }) {
+  const seated = new Set(capsule.pods.flatMap((pod) => pod.teams.map((team) => team.id)));
+  const unseated = teams.filter((team) => !seated.has(team.id));
+  if (unseated.length === 0) return null;
+
+  const heldLucky = capsule.pods.filter(
+    (pod) => pod.kind === "REMAINDER" && pod.auctionStatus === "PENDING" && pod.teams.length < capsule.subCapsules.length,
+  );
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.04] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-amber-200">
+          Unseated this round · {unseated.length}
+        </p>
+        <span className="text-xs text-zinc-500">
+          {heldLucky.length
+            ? `Seat them from a held lucky pod below (${heldLucky.map((pod) => pod.label).join(", ")}).`
+            : "No lucky pod is open for seating — reset one to hold it, or create a lucky pod in the manager below."}
+        </span>
+      </div>
+      <ul className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {unseated.map((team) => (
+          <li key={team.id} className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-xs">
+            <span className="size-1.5 shrink-0 rounded-full bg-zinc-700" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-zinc-200">{team.name}</span>
+            <span className="shrink-0 font-mono text-[0.62rem] text-zinc-500">{team.code}</span>
+            <span className="shrink-0 truncate text-[0.62rem] text-zinc-500">{team.leadName}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function AdminClient() {
   const [context, setContext] = useState<AdminContext | null>(null);
   const [message, setMessage] = useState<AdminReport | null>(null);
@@ -49,6 +94,8 @@ export function AdminClient() {
   const [managedPodNumber, setManagedPodNumber] = useState("");
   const [newPodIsRemainder, setNewPodIsRemainder] = useState(false);
   const [teamToAdd, setTeamToAdd] = useState("");
+  /** podId -> team id chosen in that lucky pod's "seat a team" picker (live round). */
+  const [seatPick, setSeatPick] = useState<Record<string, string>>({});
 
   const reload = useCallback(() => {
     void getAdminContextAction()
@@ -258,6 +305,12 @@ export function AdminClient() {
                   </span>
                 </summary>
                 <div className="mt-3 space-y-3">
+                  {capsule.status === "LIVE" ? (
+                    <UnseatedPanel
+                      teams={context?.teams ?? []}
+                      capsule={capsule}
+                    />
+                  ) : null}
                   {capsule.pods.length === 0 ? (
                     <p className="rounded-lg border border-dashed border-zinc-800 px-3 py-3 text-xs text-zinc-500">
                       Pods will appear here after the event is prepared.
@@ -297,24 +350,112 @@ export function AdminClient() {
                             </span>
                           </div>
                         </summary>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `Reset ${pod.label}? Its bids and won items will be removed, then it will restart from the first item.`,
-                                )
-                              ) {
-                                run(() => resetPodAction(capsule.key, pod.id));
-                              }
-                            }}
-                            disabled={pending || capsule.status !== "LIVE"}
-                            className="rounded-md border border-red-500/40 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-300 hover:bg-red-500/10 disabled:opacity-40"
-                          >
-                            Reset pod
-                          </button>
-                        </div>
+                        {(() => {
+                          // Live-round roster tools. A team can be taken out of a pod
+                          // only while that pod has sold nothing (a main pod then
+                          // becomes a lucky pod; a lucky pod that has not started just
+                          // shrinks). A lucky pod that is still held — every tier
+                          // pending — can take an unseated team and be started once the
+                          // main pods are done.
+                          const isLive = capsule.status === "LIVE";
+                          const isLucky = pod.kind === "REMAINDER";
+                          const soldSomething = pod.teams.some((team) => team.item);
+                          const luckyHeld = isLucky && pod.auctionStatus === "PENDING";
+                          const canRelease = isLive && !soldSomething && (!isLucky || luckyHeld);
+                          const unseatedHere = context?.teams.filter(
+                            (team) => !capsule.pods.some((p) => p.teams.some((t) => t.id === team.id)),
+                          ) ?? [];
+                          const hasRoom = pod.teams.length < capsule.subCapsules.length;
+                          const mainPodsDone = capsule.pods
+                            .filter((p) => p.kind === "MAIN")
+                            .every((p) => p.auctionStatus === "COMPLETE");
+                          const picked = seatPick[pod.id] ?? "";
+                          return (
+                            <>
+                              {isLive && luckyHeld ? (
+                                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/[0.04] px-3 py-2">
+                                  <span className="text-xs text-amber-200/90">
+                                    Held lucky pod · {pod.teams.length} seated
+                                    {!mainPodsDone ? " · opens when the main pods finish, or by hand after" : ""}
+                                  </span>
+                                  <select
+                                    value={picked}
+                                    onChange={(event) => setSeatPick((prev) => ({ ...prev, [pod.id]: event.target.value }))}
+                                    disabled={pending || !hasRoom || unseatedHere.length === 0}
+                                    className="ml-auto rounded-md border border-zinc-700 bg-black px-2 py-1.5 text-xs text-white outline-none focus:border-neon disabled:opacity-40"
+                                  >
+                                    <option value="">
+                                      {!hasRoom
+                                        ? "Pod is full"
+                                        : unseatedHere.length
+                                          ? "Seat an unseated team…"
+                                          : "No unseated teams"}
+                                    </option>
+                                    {unseatedHere.map((team) => (
+                                      <option key={team.id} value={team.id}>
+                                        {team.name} ({team.code})
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const teamId = Number.parseInt(picked, 10);
+                                      if (!Number.isInteger(teamId)) return;
+                                      setSeatPick((prev) => ({ ...prev, [pod.id]: "" }));
+                                      run(() => addTeamToPodAction(capsule.key, pod.id, teamId));
+                                    }}
+                                    disabled={pending || !picked || !hasRoom}
+                                    className="rounded-md border border-neon/50 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-neon hover:bg-neon/10 disabled:opacity-40"
+                                  >
+                                    Seat
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => run(() => startPodAction(capsule.key, pod.id))}
+                                    disabled={pending || pod.teams.length === 0 || !mainPodsDone}
+                                    title={
+                                      !mainPodsDone
+                                        ? "Lucky pods are priced from the main pods' results, so they start once every main pod has finished."
+                                        : undefined
+                                    }
+                                    className="rounded-md border border-neon/60 bg-neon/10 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-neon hover:bg-neon/20 disabled:opacity-40"
+                                  >
+                                    Start lucky pod
+                                  </button>
+                                </div>
+                              ) : null}
+
+                              <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                                {isLive && !canRelease ? (
+                                  <span className="mr-auto text-xs text-zinc-600">
+                                    {soldSomething
+                                      ? "Teams can be moved only before the pod sells a tier — reset the pod first."
+                                      : "Reset this lucky pod to hold it before changing its teams."}
+                                  </span>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (
+                                      window.confirm(
+                                        isLucky
+                                          ? `Reset ${pod.label}? Its bids and won items will be removed and the pod is held — change its teams, then press Start on it.`
+                                          : `Reset ${pod.label}? Its bids and won items will be removed, then it will restart from the first item.`,
+                                      )
+                                    ) {
+                                      run(() => resetPodAction(capsule.key, pod.id));
+                                    }
+                                  }}
+                                  disabled={pending || capsule.status !== "LIVE"}
+                                  className="rounded-md border border-red-500/40 px-2.5 py-1.5 text-xs font-semibold uppercase tracking-wide text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                                >
+                                  Reset pod
+                                </button>
+                              </div>
+                            </>
+                          );
+                        })()}
                         <div className="mt-4 overflow-x-auto border-t border-white/5 pt-3">
                           <table className="w-full min-w-[44rem] text-left text-xs">
                             <thead className="text-zinc-500">
@@ -323,7 +464,8 @@ export function AdminClient() {
                                 <th className="pb-2 pr-3 font-medium">Team</th>
                                 <th className="pb-2 pr-3 font-medium">Code</th>
                                 <th className="pb-2 pr-3 font-medium">Team leader</th>
-                                <th className="pb-2 font-medium">Round item</th>
+                                <th className="pb-2 pr-3 font-medium">Round item</th>
+                                {capsule.status === "LIVE" ? <th className="pb-2 font-medium"></th> : null}
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5 text-zinc-300">
@@ -348,7 +490,7 @@ export function AdminClient() {
                                       {team.leadEmail}
                                     </span>
                                   </td>
-                                  <td className="py-2.5">
+                                  <td className="py-2.5 pr-3">
                                     {team.item ? (
                                       <span>
                                         {team.item.name}
@@ -358,6 +500,37 @@ export function AdminClient() {
                                       <span className="text-zinc-600">No item yet</span>
                                     )}
                                   </td>
+                                  {capsule.status === "LIVE" ? (
+                                    <td className="py-2.5 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const toLucky = pod.kind === "MAIN";
+                                          if (
+                                            window.confirm(
+                                              `Take ${team.name} out of ${pod.label}? They are unseated for ${capsule.name}` +
+                                                (toLucky
+                                                  ? ` and ${pod.label} becomes a lucky pod of ${pod.teams.length - 1}, opening with the other lucky pods once the main pods finish.`
+                                                  : pod.teams.length === 1
+                                                    ? ` and ${pod.label} is left empty; its tiers are withdrawn.`
+                                                    : "."),
+                                            )
+                                          ) {
+                                            run(() => removeTeamFromPodAction(capsule.key, pod.id, team.id));
+                                          }
+                                        }}
+                                        disabled={
+                                          pending ||
+                                          pod.teams.some((t) => t.item) ||
+                                          (pod.kind === "REMAINDER" && pod.auctionStatus !== "PENDING")
+                                        }
+                                        title={team.online ? "This lead is online right now" : "This lead has no socket in the room"}
+                                        className="rounded-md border border-red-500/40 px-2 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-red-300 hover:bg-red-500/10 disabled:opacity-30"
+                                      >
+                                        Remove
+                                      </button>
+                                    </td>
+                                  ) : null}
                                 </tr>
                               ))}
                             </tbody>
@@ -515,12 +688,17 @@ export function AdminClient() {
           ) : (
             <div className="mt-5 rounded-xl border border-dashed border-zinc-700 bg-black/20 p-4">
               <p className="text-sm font-medium text-zinc-200">Pod {parsedPodNumber} does not exist in {managedCapsule.name}.</p>
-              <p className="mt-1 text-xs text-zinc-500">Create it as a standard pod, or mark it as the round&apos;s lucky / remainder pod.</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                {managedCapsule.status === "LIVE"
+                  ? "The round is live, so this can only be a lucky / remainder pod. It is held until you seat teams in it and press Start."
+                  : "Create it as a standard pod, or mark it as a lucky / remainder pod. A round may have more than one."}
+              </p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <label className="inline-flex items-center gap-2 text-xs text-zinc-400">
                   <input
                     type="checkbox"
-                    checked={newPodIsRemainder}
+                    checked={managedCapsule.status === "LIVE" ? true : newPodIsRemainder}
+                    disabled={managedCapsule.status === "LIVE"}
                     onChange={(event) => setNewPodIsRemainder(event.target.checked)}
                     className="accent-amber-400"
                   />
@@ -528,8 +706,16 @@ export function AdminClient() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => run(() => createManualPodAction(managedCapsule.key, parsedPodNumber, newPodIsRemainder))}
-                  disabled={pending || managedCapsule.status !== "PENDING"}
+                  onClick={() =>
+                    run(() =>
+                      createManualPodAction(
+                        managedCapsule.key,
+                        parsedPodNumber,
+                        managedCapsule.status === "LIVE" ? true : newPodIsRemainder,
+                      ),
+                    )
+                  }
+                  disabled={pending || managedCapsule.status === "CLOSED"}
                   className="rounded-lg border border-neon/50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neon hover:bg-neon/10 disabled:opacity-40"
                 >
                   Create pod {parsedPodNumber}

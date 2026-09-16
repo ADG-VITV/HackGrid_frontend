@@ -189,7 +189,8 @@ export function MemberView({ context, polling }: { context: BiddingContext; poll
                             Not in a pod this round.
                           </h2>
                           <p className="mt-4 max-w-lg text-sm leading-6 text-zinc-500">
-                            Your team was not drawn into a pod for {live.name}.
+                            Your team has no pod in {live.name} right now. If the organiser seats it in a
+                            lucky pod, this page picks that up on its own.
                           </p>
                         </>
                       )}
